@@ -83,3 +83,7 @@ FIREBASE_SERVICE_ACCOUNT_JSON   # optional if reusing the Drive service account
 ```
 
 Never paste the actual secret values into chat or commit them to Git.
+
+
+## Production smoke test
+Verify legal accordions, outside-touch/Escape dismissal, invalid-input alerts, a completed purchase, and that the product sales count and Top Sales ranking update only after payment verification.

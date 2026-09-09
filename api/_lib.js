@@ -151,6 +151,9 @@ export async function markPaid(orderId, charge) {
   const order=snap.data();
   const alreadyPaid=order.status==='paid';
   await ref.set({status:'paid',paidAt:alreadyPaid?(order.paidAt||admin.firestore.FieldValue.serverTimestamp()):admin.firestore.FieldValue.serverTimestamp(),flutterwaveChargeId:charge.id||order.flutterwaveChargeId||'',flutterwaveReference:charge.reference||order.reference,verifiedAmount:Number(charge.amount),verifiedCurrency:charge.currency,updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});
+  if(!alreadyPaid && order.productId){
+    await db.collection('products').doc(order.productId).set({sales:admin.firestore.FieldValue.increment(1),updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});
+  }
   if(order.email && !alreadyPaid){
     const customerRef=db.collection('customers').doc(Buffer.from(String(order.email).trim().toLowerCase()).toString('base64url'));
     await customerRef.set({email:String(order.email).trim().toLowerCase(),name:order.name||'',orders:admin.firestore.FieldValue.increment(1),lastProductId:order.productId||'',lastProductName:order.productName||'',lastOrderId:orderId,lastOrderAt:admin.firestore.FieldValue.serverTimestamp(),updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});
