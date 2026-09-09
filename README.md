@@ -1,4 +1,4 @@
-# WyCode Market v1.0.1
+# WyCode Market v1.0.9
 
 Private source-code marketplace designed for Vercel. The public catalog reads products from Firestore (the same collection used by WyCode Studio). Paid source files remain private in Google Drive.
 
@@ -87,3 +87,24 @@ Never paste the actual secret values into chat or commit them to Git.
 
 ## Production smoke test
 Verify legal accordions, outside-touch/Escape dismissal, invalid-input alerts, a completed purchase, and that the product sales count and Top Sales ranking update only after payment verification.
+
+
+
+### Pro payment
+Pro access is sold separately from product purchases through the same Flutterwave v4 integration. The fixed prices are **$16 USD** or **₦17,500 NGN**. A Pro order is created in Firestore, paid through the v4 Orchestrator/direct-charge flow, and the customer is marked `pro: true` / `plan: "pro"` only after the charge is re-queried and its status, amount, currency, and reference are verified.
+
+The Pro checkout uses the same server-only `FLW_CLIENT_ID`, `FLW_CLIENT_SECRET`, `FLW_ENCRYPTION_KEY`, and `FLW_WEBHOOK_SECRET` variables. No separate payment credentials are required.
+
+### Free Pro testing
+Set server-only `PRO_FREE_TEST_MODE=true` on a Vercel Preview/testing environment to activate Pro for free. In this mode no Flutterwave charge is created; the backend grants `pro: true` / `plan: "pro"` and records a `free-test` Pro order. The UI automatically shows a clear TEST MODE notice. **Disable `PRO_FREE_TEST_MODE` before enabling live Pro payments.**
+
+## Pro purchase recovery
+
+The marketplace includes an optional Pro-only purchase recovery flow. A Pro customer enters the email used for purchases, receives a one-time code, and after verification receives an email containing secure download links for all completed purchases associated with that email. Recovery links expire after 24 hours.
+
+Recovery email delivery uses Resend over the server-side API; no email API key is exposed to the browser. Configure:
+- `RESEND_API_KEY` — server-only Resend API key.
+- `RECOVERY_FROM_EMAIL` — verified sender address/domain in Resend.
+- `PRO_RECOVERY_EMAILS` — optional comma-separated Pro email allowlist for testing/manual Pro access.
+
+A customer document may also be marked `pro: true` or `plan: "pro"` in Firestore. This keeps the feature locked by default until your Pro billing/entitlement system is connected. `DOWNLOAD_TOKEN_SECRET` must remain configured because it signs the recovery links.

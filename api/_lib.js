@@ -155,8 +155,21 @@ export async function markPaid(orderId, charge) {
     await db.collection('products').doc(order.productId).set({sales:admin.firestore.FieldValue.increment(1),updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});
   }
   if(order.email && !alreadyPaid){
-    const customerRef=db.collection('customers').doc(Buffer.from(String(order.email).trim().toLowerCase()).toString('base64url'));
-    await customerRef.set({email:String(order.email).trim().toLowerCase(),name:order.name||'',orders:admin.firestore.FieldValue.increment(1),lastProductId:order.productId||'',lastProductName:order.productName||'',lastOrderId:orderId,lastOrderAt:admin.firestore.FieldValue.serverTimestamp(),updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});
+    const email=String(order.email).trim().toLowerCase();
+    const customerRef=db.collection('customers').doc(Buffer.from(email).toString('base64url'));
+    const customerUpdate={email,name:order.name||'',orders:admin.firestore.FieldValue.increment(1),lastOrderId:orderId,lastOrderAt:admin.firestore.FieldValue.serverTimestamp(),updatedAt:admin.firestore.FieldValue.serverTimestamp()};
+    if(order.kind==='pro'){
+      customerUpdate.pro=true;
+      customerUpdate.plan='pro';
+      customerUpdate.proOrderId=orderId;
+      customerUpdate.proAmount=Number(order.amount);
+      customerUpdate.proCurrency=String(order.currency||'');
+      customerUpdate.proPaidAt=admin.firestore.FieldValue.serverTimestamp();
+    }else{
+      customerUpdate.lastProductId=order.productId||'';
+      customerUpdate.lastProductName=order.productName||'';
+    }
+    await customerRef.set(customerUpdate,{merge:true});
   }
   return ref;
 }

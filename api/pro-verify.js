@@ -1,0 +1,28 @@
+import {getDb,flwRequest,json,method,body,markPaid} from './_lib.js';
+
+export default async function handler(req,res){
+  if(!method(req,res,['GET','POST']))return;
+  try{
+    const b=req.method==='POST'?await body(req):req.query||{};
+    const orderId=String(b.orderId||'');
+    if(!orderId)return json(res,400,{error:'orderId is required'});
+    const ref=getDb().collection('orders').doc(orderId);
+    const snap=await ref.get();
+    if(!snap.exists)return json(res,404,{error:'Order not found'});
+    const order=snap.data();
+    if(order.kind!=='pro')return json(res,400,{error:'Not a Pro order'});
+    if(order.status==='paid')return json(res,200,{status:'paid',plan:'pro',amount:order.amount,currency:order.currency});
+    if(!order.flutterwaveChargeId)return json(res,200,{status:order.status||'pending'});
+
+    const fw=await flwRequest(`/charges/${encodeURIComponent(order.flutterwaveChargeId)}`,{method:'GET'});
+    const charge=fw.data||{};
+    const valid=charge.status==='succeeded' && Number(charge.amount)===Number(order.amount) && String(charge.currency).toUpperCase()===String(order.currency).toUpperCase() && String(charge.reference)===String(order.reference);
+    if(valid){
+      await markPaid(orderId,{...charge,reference:charge.reference||order.reference});
+      await ref.set({flutterwaveStatus:charge.status},{merge:true});
+      return json(res,200,{status:'paid',plan:'pro',amount:order.amount,currency:order.currency});
+    }
+    if(['failed','voided'].includes(charge.status))await ref.set({status:'failed',flutterwaveStatus:charge.status},{merge:true});
+    return json(res,200,{status:charge.status||'pending'});
+  }catch(e){return json(res,e.status&&e.status<500?e.status:500,{error:e.message||'Pro payment verification failed'});}
+}
