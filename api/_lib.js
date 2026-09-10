@@ -241,9 +241,5 @@ export async function markPaid(orderId, charge, options={}) {
   const alreadyPaid=order.status==='paid';
   await ref.set({status:'paid',paidAt:alreadyPaid?(order.paidAt||admin.firestore.FieldValue.serverTimestamp()):admin.firestore.FieldValue.serverTimestamp(),flutterwaveChargeId:charge.id||order.flutterwaveChargeId||'',flutterwaveReference:charge.reference||order.reference,flutterwaveStatus:charge.status||order.flutterwaveStatus||'',verifiedAmount:Number(charge.amount),verifiedCurrency:charge.currency,updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});
   const receiptStatus=order.receiptStatus||'not_sent';
-  // Payment confirmation must not wait on email delivery. Receipt delivery is handled by the
-  // dedicated receipt endpoint after the success UI is shown, while the webhook can request it
-  // server-side as a fallback. This keeps the payment confirmation path fast and reliable.
-  await Promise.all(tasks);
   return {ref,receiptStatus};
 }

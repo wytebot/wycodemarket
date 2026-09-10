@@ -90,13 +90,7 @@ Verify legal accordions, outside-touch/Escape dismissal, invalid-input alerts, a
 
 
 
-### Pro payment
-Pro access is sold separately from product purchases through the same Flutterwave v4 integration. The fixed prices are **$16 USD** or **₦17,500 NGN**. A Pro order is created in Firestore, paid through the v4 Orchestrator/direct-charge flow, and the customer is marked `pro: true` / `plan: "pro"` only after the charge is re-queried and its status, amount, currency, and reference are verified.
 
-The Pro checkout uses the same server-only `FLW_CLIENT_ID`, `FLW_CLIENT_SECRET`, `FLW_ENCRYPTION_KEY`, and `FLW_WEBHOOK_SECRET` variables. No separate payment credentials are required.
-
-### Free Pro testing
-Set server-only `PRO_FREE_TEST_MODE=true` on a Vercel Preview/testing environment to activate Pro for free. In this mode no Flutterwave charge is created; the backend grants `pro: true` / `plan: "pro"` and records a `free-test` Pro order. The UI automatically shows a clear TEST MODE notice. **Disable `PRO_FREE_TEST_MODE` before enabling live Pro payments.**
 
 ## Purchase recovery
 
