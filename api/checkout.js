@@ -13,11 +13,14 @@ function cleanCard(card){
   const cvv=String(card.cvv||'').replace(/\D/g,'');
   const month=String(card.expiry_month||'').replace(/\D/g,'');
   const rawYear=String(card.expiry_year||'').replace(/\D/g,'');
-  const year=rawYear.length===4?rawYear.slice(-2):rawYear;
+  const year=rawYear.length===4?rawYear:(rawYear.length===2?`20${rawYear}`:'');
   if(!/^\d{12,19}$/.test(number)) throw cardError('Enter a valid card number');
   if(!/^\d{3,4}$/.test(cvv)) throw cardError('Enter a valid CVV');
   if(!/^(0[1-9]|1[0-2])$/.test(month)) throw cardError('Enter a valid expiry month');
-  if(!/^\d{2}$/.test(year)) throw cardError('Enter a valid expiry year');
+  if(!/^\d{4}$/.test(year)) throw cardError('Enter a valid expiry year');
+  const y=Number(year), current=new Date().getFullYear(), currentMonth=new Date().getMonth()+1;
+  if(y<2000||y>2099) throw cardError('Enter an expiry year between 2000 and 2099');
+  if(y<current || (y===current && Number(month)<currentMonth)) throw cardError('Your card expiry date has passed');
   return {number,cvv,month,year};
 }
 
