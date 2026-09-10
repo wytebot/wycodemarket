@@ -84,8 +84,19 @@ export default async function handler(req,res){
     return json(res,200,{orderId,reference,status:data.status||'pending',chargeId:data.id||'',nextAction:data.next_action||null});
   }catch(e){
     const apiError=e?.data?.error||{};
+    const diagnostic=e?.data?.diagnostic||{};
     const validation=Array.isArray(apiError.validation_errors)?apiError.validation_errors:[];
-    const safeDetails={code:apiError.code||'',type:apiError.type||'',validation_errors:validation};
+    const safeDetails={
+      code:apiError.code||'',
+      type:apiError.type||'',
+      validation_errors:validation,
+      phase:diagnostic.phase||'',
+      environment:diagnostic.environment||'',
+      api_base_url:diagnostic.api_base_url||'',
+      endpoint:diagnostic.endpoint||'',
+      trace_id:diagnostic.trace_id||'',
+      environment_hint:diagnostic.environment_hint||''
+    };
     const message=apiError.message||e.message||'Checkout failed';
     json(res,e.status&&e.status<500?e.status:500,{error:message,details:safeDetails});
   }

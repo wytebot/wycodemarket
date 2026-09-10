@@ -82,6 +82,12 @@ export default async function handler(req,res){
     const data=fw.data||{};
     await db.collection('orders').doc(orderId).set({flutterwaveChargeId:data.id||'',flutterwaveStatus:data.status||'pending',updatedAt:new Date()},{merge:true});
     return json(res,200,{orderId,reference,status:data.status||'pending',chargeId:data.id||'',nextAction:data.next_action||null,amount:price.amount,currency:price.currency});
-  }catch(e){return json(res,e.status&&e.status<500?e.status:500,{error:e.message||'Pro payment could not be started',details:process.env.NODE_ENV==='production'?undefined:e.data});}
+  }catch(e){
+    const apiError=e?.data?.error||{};
+    const diagnostic=e?.data?.diagnostic||{};
+    const validation=Array.isArray(apiError.validation_errors)?apiError.validation_errors:[];
+    const details={code:apiError.code||'',type:apiError.type||'',validation_errors:validation,phase:diagnostic.phase||'',environment:diagnostic.environment||'',api_base_url:diagnostic.api_base_url||'',endpoint:diagnostic.endpoint||'',trace_id:diagnostic.trace_id||'',environment_hint:diagnostic.environment_hint||''};
+    return json(res,e.status&&e.status<500?e.status:500,{error:apiError.message||e.message||'Pro payment could not be started',details});
+  }
 }
 function emailRx(v){return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)}

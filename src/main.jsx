@@ -1,6 +1,6 @@
 import React,{useEffect,useMemo,useRef,useState}from'react';import{createRoot}from'react-dom/client';import'./styles.css';
 function money(v,c='USD'){try{return new Intl.NumberFormat('en-NG',{style:'currency',currency:c,maximumFractionDigits:2}).format(Number(v)||0)}catch{return `${c} ${Number(v)||0}`}}
-async function api(url,opt){const r=await fetch(url,opt);const j=await r.json().catch(()=>({}));if(!r.ok){const v=Array.isArray(j?.details?.validation_errors)?j.details.validation_errors:[];const extra=v.map(x=>x?.field_name&&x?.message?`${x.field_name}: ${x.message}`:'').filter(Boolean).join(' • ');throw new Error(extra?`${j.error||'Request failed'} — ${extra}`:(j.error||'Request failed. Please try again.'));}return j}
+async function api(url,opt){const r=await fetch(url,opt);const j=await r.json().catch(()=>({}));if(!r.ok){const d=j?.details||{};const v=Array.isArray(d.validation_errors)?d.validation_errors:[];const extra=v.map(x=>x?.field_name&&x?.message?`${x.field_name}: ${x.message}`:'').filter(Boolean).join(' • ');const diag=d?.environment_hint||'';const where=d?.phase?` [${d.phase}${d.environment?` / ${d.environment}`:''}]`:'';const code=d?.code?` (${d.code})`:'';const trace=d?.trace_id?` Trace: ${d.trace_id}`:'';throw new Error(`${j.error||'Request failed'}${code}${where}${extra?` — ${extra}`:''}${diag?` — ${diag}`:''}${trace}`);}return j}
 const emptyForm={name:'',email:'',cardNumber:'',cvv:'',month:'',year:''};
 const emptyRecovery={email:'',otp:''};
 const PRO_PRICES={USD:16,NGN:17500};

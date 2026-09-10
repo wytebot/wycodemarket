@@ -30,30 +30,93 @@ export function getDrive() {
   return drive;
 }
 
-export async function flwToken() {
-  const clientId = process.env.FLW_CLIENT_ID;
-  const clientSecret = process.env.FLW_CLIENT_SECRET;
-  if (!clientId || !clientSecret) throw new Error('Missing Flutterwave v4 credentials');
-  const form = new URLSearchParams({client_id:clientId, client_secret:clientSecret, grant_type:'client_credentials'});
-  const r = await fetch('https://idp.flutterwave.com/realms/flutterwave/protocol/openid-connect/token', {
-    method:'POST',
-    headers:{'Content-Type':'application/x-www-form-urlencoded'},
-    body:form
-  });
-  if (!r.ok) throw new Error(`Flutterwave auth failed (${r.status})`);
-  const j = await r.json();
-  if (!j.access_token) throw new Error('Flutterwave did not return an access token');
-  return j.access_token;
+function flutterwaveEnvironment() {
+  const raw=String(process.env.FLW_ENVIRONMENT||'').trim().toLowerCase();
+  if(!raw) return 'production';
+  if(raw==='sandbox'||raw==='test') return 'sandbox';
+  if(raw==='production'||raw==='prod'||raw==='live') return 'production';
+  const e=new Error(`Invalid FLW_ENVIRONMENT: ${raw}. Use sandbox or production.`);
+  e.status=500;
+  e.data={error:{type:'INVALID_FLW_ENVIRONMENT',code:'CONFIG',message:e.message}};
+  throw e;
 }
 
 export function flwBase() {
-  return process.env.FLW_ENVIRONMENT === 'sandbox'
+  return flutterwaveEnvironment()==='sandbox'
     ? 'https://developersandbox-api.flutterwave.com'
     : 'https://f4bexperience.flutterwave.com';
 }
 
+function parseFlutterwaveError(text) {
+  let data;
+  try { data=JSON.parse(text); } catch { data={raw:text}; }
+  const err=data?.error||{};
+  return {
+    data,
+    type:String(err.type||data?.type||''),
+    code:String(err.code||data?.code||''),
+    message:String(err.message||data?.message||''),
+    validation_errors:Array.isArray(err.validation_errors)?err.validation_errors:[]
+  };
+}
+
+export async function flwToken() {
+  const clientId = process.env.FLW_CLIENT_ID;
+  const clientSecret = process.env.FLW_CLIENT_SECRET;
+  if (!clientId || !clientSecret) {
+    const e=new Error('Missing Flutterwave v4 credentials.');
+    e.status=500;
+    e.data={error:{type:'CONFIGURATION_ERROR',code:'MISSING_CREDENTIALS',message:e.message}};
+    throw e;
+  }
+  const environment=flutterwaveEnvironment();
+  const form = new URLSearchParams({client_id:clientId, client_secret:clientSecret, grant_type:'client_credentials'});
+  const tokenEndpoint='https://idp.flutterwave.com/realms/flutterwave/protocol/openid-connect/token';
+  const trace=crypto.randomUUID().replaceAll('-','');
+  const r = await fetch(tokenEndpoint, {
+    method:'POST',
+    headers:{'Content-Type':'application/x-www-form-urlencoded','X-Trace-Id':trace},
+    body:form
+  });
+  const text=await r.text();
+  const parsed=parseFlutterwaveError(text);
+  if (!r.ok) {
+    const message=parsed.message||`Flutterwave OAuth authorization failed (${r.status}).`;
+    const e=new Error(message);
+    e.status=r.status;
+    e.data={
+      error:{
+        type:parsed.type||'OAUTH_ERROR',
+        code:parsed.code||String(r.status),
+        message,
+        validation_errors:parsed.validation_errors
+      },
+      diagnostic:{
+        phase:'oauth',
+        environment,
+        api_base_url:flwBase(),
+        endpoint:tokenEndpoint,
+        trace_id:trace,
+        environment_hint:'Flutterwave v4 credentials are environment-specific. If these credentials were created for the other environment, use the matching v4 Client ID and Client Secret.'
+      }
+    };
+    throw e;
+  }
+  let j;
+  try { j=JSON.parse(text); } catch { j={}; }
+  if (!j.access_token) {
+    const e=new Error('Flutterwave did not return an access token.');
+    e.status=502;
+    e.data={error:{type:'OAUTH_RESPONSE_INVALID',code:'NO_ACCESS_TOKEN',message:e.message},diagnostic:{phase:'oauth',environment,api_base_url:flwBase(),endpoint:tokenEndpoint,trace_id:trace}};
+    throw e;
+  }
+  return j.access_token;
+}
+
 export async function flwRequest(path, options={}) {
   const token = await flwToken();
+  const environment=flutterwaveEnvironment();
+  const base=flwBase();
   const trace = crypto.randomUUID().replaceAll('-', '');
   const headers = {
     Authorization:`Bearer ${token}`,
@@ -61,17 +124,32 @@ export async function flwRequest(path, options={}) {
     'X-Trace-Id':trace,
     ...(options.headers||{})
   };
-  const r = await fetch(flwBase()+path,{...options,headers});
+  const r = await fetch(base+path,{...options,headers});
   const text = await r.text();
-  let data;
-  try { data = JSON.parse(text); } catch { data = {raw:text}; }
+  const parsed=parseFlutterwaveError(text);
   if (!r.ok) {
-    const e = new Error(data?.error?.message || data?.message || `Flutterwave request failed (${r.status})`);
+    const message=parsed.message||`Flutterwave request failed (${r.status}).`;
+    const e = new Error(message);
     e.status=r.status;
-    e.data=data;
+    e.data={
+      error:{
+        type:parsed.type||'FLUTTERWAVE_ERROR',
+        code:parsed.code||String(r.status),
+        message,
+        validation_errors:parsed.validation_errors
+      },
+      diagnostic:{
+        phase:'api',
+        environment,
+        api_base_url:base,
+        endpoint:base+path,
+        trace_id:trace,
+        environment_hint:r.status===403?'A 403 means the authenticated Flutterwave client/token is not permitted to use this resource. Verify that FLW_CLIENT_ID, FLW_CLIENT_SECRET and FLW_ENCRYPTION_KEY are from the same v4 environment selected above, and that the Flutterwave account has access to this payment capability.':r.status===401?'A 401 usually means the Flutterwave credentials/token are invalid or expired. Use matching v4 credentials for the selected environment.':''
+      }
+    };
     throw e;
   }
-  return data;
+  try { return JSON.parse(text); } catch { return {raw:text}; }
 }
 
 export function json(res,status,payload) {

@@ -4,4 +4,4 @@ export default async function handler(req,res){ if(!method(req,res,['GET','POST'
  if(valid){await markPaid(orderId,{...charge,reference:charge.reference||order.reference}); await ref.set({flutterwaveStatus:charge.status},{merge:true}); return json(res,200,{status:'paid',downloadToken:signDownloadToken(orderId),order:{id:orderId,productName:order.productName,amount:order.amount,currency:order.currency}});}
  if(['failed','voided'].includes(charge.status)) await ref.set({status:'failed',flutterwaveStatus:charge.status},{merge:true});
  return json(res,200,{status:charge.status||'pending'});
- }catch(e){json(res,e.status&&e.status<500?e.status:500,{error:e.message||'Verification failed'});}}
+ }catch(e){const a=e?.data?.error||{},d=e?.data?.diagnostic||{};const v=Array.isArray(a.validation_errors)?a.validation_errors:[];json(res,e.status&&e.status<500?e.status:500,{error:a.message||e.message||'Verification failed',details:{code:a.code||'',type:a.type||'',validation_errors:v,phase:d.phase||'',environment:d.environment||'',api_base_url:d.api_base_url||'',endpoint:d.endpoint||'',trace_id:d.trace_id||'',environment_hint:d.environment_hint||''}});}}
