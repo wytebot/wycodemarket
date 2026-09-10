@@ -35,7 +35,7 @@ Set these in Vercel. Never put these secrets in `VITE_*` variables.
 
 ## Firestore
 WyCode Studio creates documents in `products`. Market expects:
-`name`, `description`, `status` (`active` or `published`), `price`, `currency`, `category`, `version`, `demoUrl`, `coverUrl`, `requirements`, `license`, and `driveFileId`.
+`name`, `description`, `status` (`active` or `published`), `price`, `currency`, `category`, `version`, `demoUrl`, `coverUrl`, `requirements`, `license`, and `driveFileId`. Optional rating fields are `ratingAverage` and `ratingCount`; verified buyers can submit/update ratings through the Market and those aggregates are stored in Firestore.
 
 Orders are written by the server into `orders`.
 
@@ -44,6 +44,9 @@ Configure this endpoint in the Flutterwave dashboard:
 `https://YOUR-MARKET-DOMAIN/api/webhook`
 
 Set the same random webhook secret in `FLW_WEBHOOK_SECRET`. The endpoint verifies the exact raw request bytes with HMAC-SHA256 and then re-queries the charge before delivering value. Flutterwave recommends both signature verification and re-querying critical transaction data.
+
+## Product ratings
+Ratings use the existing Firestore database rather than Google Drive because ratings are structured records, not files. A rating is accepted only when the submitted order exists, is marked paid, and belongs to the product. One rating document is kept per order, so updating a rating does not inflate the rating count. No new storage provider or environment variable is required.
 
 ## Google Drive delivery
 The server uses the Drive API to retrieve private blob content with `files.get` + `alt=media`, after checking download capability and the configured folder ancestry.
