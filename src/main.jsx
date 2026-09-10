@@ -83,7 +83,7 @@ function handleNextAction(x){
     const nextProduct={...detailsProduct,ratingAverage:Number(x.ratingAverage||0),ratingCount:Number(x.ratingCount||0)};
     setDetailsProduct(nextProduct);
     setProducts(prev=>prev.map(p=>p.id===detailsProduct.id?{...p,...nextProduct}:p));
-    setOwned(prev=>{const next={...prev,[detailsProduct.id]:{...prev[detailsProduct.id],rating};try{localStorage.setItem('wycode-market-owned',JSON.stringify(next))}catch{}return next});
+    setOwned(prev=>{const next={...prev,[detailsProduct.id]:{...prev[detailsProduct.id],rating}};try{localStorage.setItem('wycode-market-owned',JSON.stringify(next))}catch{}return next});
     setRatingMsg('Thanks — your rating has been saved.');
   }catch(e){setRatingMsg(e.message||'Could not save your rating. Please try again.')}finally{setRatingBusy(false)}
  }
