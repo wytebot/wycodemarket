@@ -26,6 +26,51 @@ function handleNextAction(x){
   }
   return false;
 }
+ async function poll(orderId){
+  const id=String(orderId||'').trim();
+  if(!id)return;
+  const wait=ms=>new Promise(r=>setTimeout(r,ms));
+  let lastError='';
+  for(let attempt=0;attempt<20;attempt++){
+    setSelected(prev=>({...prev,orderId:id,processing:true,paid:false,failed:false,stalled:false,error:''}));
+    setMsg(attempt===0?'Confirming payment…':'Checking payment status…');
+    try{
+      const x=await api('/api/verify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({orderId:id})});
+      const order=x.order||{};
+      if(x.status==='paid'&&x.downloadToken){
+        const product=products.find(p=>String(p.id)===String(order.productId))||products.find(p=>String(p.name)===String(order.productName))||{};
+        const expiresAt=Date.now()+24*60*60*1000;
+        const ownedEntry={token:x.downloadToken,expiresAt};
+        setOwned(prev=>{
+          const next={...prev};
+          if(order.productId)next[order.productId]=ownedEntry;
+          try{localStorage.setItem('wycode-market-owned',JSON.stringify(next))}catch{}
+          return next;
+        });
+        setSelected(prev=>({...product,...prev,...order,orderId:id,productId:order.productId||product.id,productName:order.productName||product.name,reference:order.reference||product.reference||'',downloadToken:x.downloadToken,paid:true,processing:false,failed:false,stalled:false}));
+        setMsg('Payment successful. Your source code is ready.');
+        try{history.replaceState({},'',location.pathname+location.hash)}catch{}
+        return;
+      }
+      if(handleNextAction({...x,orderId:id}))return;
+      if(x.status==='failed'||x.status==='voided'){
+        setSelected(prev=>({...prev,...order,orderId:id,processing:false,paid:false,failed:true,error:`Payment was ${x.status}.`}));
+        return;
+      }
+      lastError='';
+    }catch(e){
+      lastError=e.message||'Could not confirm payment.';
+      if(attempt>=19){
+        setSelected(prev=>({...prev,orderId:id,processing:false,paid:false,failed:true,error:lastError}));
+        setMsg(lastError);
+        return;
+      }
+    }
+    await wait(3000);
+  }
+  setSelected(prev=>({...prev,orderId:id,processing:true,stalled:true,failed:false,error:''}));
+  setMsg('Flutterwave has not returned the final status yet.');
+}
  async function submitAuth(){if(!authStep||authBusy)return;const{orderId,kind}=authStep;const payload={orderId,kind};if(kind==='pin'){if(!/^\d{4,6}$/.test(authForm.pin))return setAuthMsg('Enter the 4-6 digit PIN on your card.');payload.pin=authForm.pin}else if(kind==='otp'){if(!/^\d{4,8}$/.test(authForm.otp))return setAuthMsg('Enter the code sent to you.');payload.otp=authForm.otp}else if(kind==='avs'){if(!authForm.country||!authForm.city||!authForm.line1||!authForm.postal_code)return setAuthMsg('Fill in your billing address.');payload.address={country:authForm.country,city:authForm.city,state:authForm.state,postal_code:authForm.postal_code,line1:authForm.line1,line2:authForm.line2}}setAuthBusy(true);setAuthMsg('Confirming…');try{const x=await api('/api/authorize',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});if(handleNextAction({...x,orderId}))return;setAuthStep(null);return poll(orderId)}catch(e){setAuthMsg(e.message||'Could not confirm. Please try again.')}finally{setAuthBusy(false)}}
  function downloadOwned(token){location.href=`/api/download?token=${encodeURIComponent(token)}`}
 
