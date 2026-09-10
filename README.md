@@ -92,10 +92,3 @@ Verify legal accordions, outside-touch/Escape dismissal, invalid-input alerts, a
 
 
 
-## Purchase recovery
-
-The marketplace includes a free purchase recovery flow that does not use Resend, Gmail, SMS, or another email provider. A customer enters the email used at checkout and the unique Flutterwave payment reference from that purchase. The backend re-queries Flutterwave, verifies the reference, completed status, amount, currency and purchase email, matches the payment to the server-side order (including legacy orders), then issues a fresh 24-hour HMAC download token. No OTP is generated or emailed.
-
-The recovery action is available from the collapsible navigation menu. The standalone recovery banner has been removed.
-
-`DOWNLOAD_TOKEN_SECRET` must remain configured because it signs the recovered download links.
