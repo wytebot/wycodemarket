@@ -252,7 +252,8 @@ export async function sendPurchaseReceipt({to,name,productName,orderId,amount,cu
   return data;
 }
 
-export async function markPaid(orderId, charge) {
+export async function markPaid(orderId, charge, options={}) {
+  const sendReceipt=options.sendReceipt===true;
   const db=getDb();
   const ref=db.collection('orders').doc(orderId);
   const snap=await ref.get();
@@ -281,11 +282,11 @@ export async function markPaid(orderId, charge) {
       customerUpdate.lastProductName=order.productName||'';
     }
     tasks.push(customerRef.set(customerUpdate,{merge:true}));
-    if(order.kind!=='pro') {
-      receiptStatus='sent';
+    if(order.kind!=='pro' && sendReceipt && receiptStatus!=='sent') {
+      receiptStatus='sending';
       tasks.push(
         sendPurchaseReceipt({to:email,name:order.name,productName:order.productName,orderId,amount:order.amount,currency:order.currency,reference:order.reference})
-          .then(()=>ref.set({receiptStatus:'sent',receiptSentAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true}))
+          .then(()=>{receiptStatus='sent';return ref.set({receiptStatus:'sent',receiptSentAt:admin.firestore.FieldValue.serverTimestamp(),receiptError:admin.firestore.FieldValue.delete()},{merge:true});})
           .catch(receiptError=>{
             receiptStatus='failed';
             console.error('purchase-receipt:',receiptError?.message||receiptError);
@@ -294,9 +295,9 @@ export async function markPaid(orderId, charge) {
       );
     }
   }
-  // Sales count, customer profile and the receipt email are independent of each other, so run them
-  // concurrently instead of one-after-another — this is the main latency win for the payment flow,
-  // since the receipt email (a third-party API call) no longer sits behind two extra Firestore writes.
+  // Payment confirmation must not wait on email delivery. Receipt delivery is handled by the
+  // dedicated receipt endpoint after the success UI is shown, while the webhook can request it
+  // server-side as a fallback. This keeps the payment confirmation path fast and reliable.
   await Promise.all(tasks);
   return {ref,receiptStatus};
 }
