@@ -239,7 +239,7 @@ export async function markPaid(orderId, charge, options={}) {
   if(!snap.exists) throw new Error('Order not found');
   const order=snap.data();
   const alreadyPaid=order.status==='paid';
-  await ref.set({status:'paid',paidAt:alreadyPaid?(order.paidAt||admin.firestore.FieldValue.serverTimestamp()):admin.firestore.FieldValue.serverTimestamp(),reference:charge.reference||order.reference||'',flutterwaveChargeId:charge.id||order.flutterwaveChargeId||'',flutterwaveReference:charge.reference||order.flutterwaveReference||order.reference||'',flutterwaveStatus:charge.status||order.flutterwaveStatus||'',verifiedAmount:Number(charge.amount),verifiedCurrency:charge.currency,updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});
+  await ref.set({status:'paid',paidAt:alreadyPaid?(order.paidAt||admin.firestore.FieldValue.serverTimestamp()):admin.firestore.FieldValue.serverTimestamp(),reference:charge.reference||order.reference||'',flutterwaveChargeId:charge.id||order.flutterwaveChargeId||'',flutterwaveReference:charge.flutterwaveReference||charge.flw_ref||charge.reference||order.flutterwaveReference||order.reference||'',flutterwaveStatus:charge.status||order.flutterwaveStatus||'',verifiedAmount:Number(charge.amount),verifiedCurrency:charge.currency,updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});
   const receiptStatus=order.receiptStatus||'not_sent';
   return {ref,receiptStatus};
 }

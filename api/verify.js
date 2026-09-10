@@ -20,23 +20,70 @@ export default async function handler(req,res){ if(!method(req,res,['GET','POST'
    let candidates=[...candidateMap.values()];
    let charge=null;
 
-   // Always re-query Flutterwave with the supplied reference. A previously-paid Firestore
-   // record is not enough on its own for recovery; Flutterwave remains the payment source of truth.
+   // First try the current v4 reference lookup. Current v4 merchant references are
+   // constrained to the v4 reference format, so older receipts may contain a legacy
+   // Flutterwave reference (tx_ref/flw_ref) that v4 /charges?reference cannot find.
    try{
      const fw=await flwRequest(`/charges?reference=${encodeURIComponent(reference)}`,{method:'GET'});
      const rows=Array.isArray(fw.data)?fw.data:[];
      charge=rows.find(c=>normalize(c.reference)===normalize(reference))||null;
    }catch(e){
-     // If Flutterwave cannot be reached, only an already-known exact order reference can be
-     // identified locally, but do not issue a recovery token without live verification.
-     throw e;
+     // Keep the v4 error only if no legacy credential is available. Otherwise the
+     // legacy verifier below may still be able to validate an older transaction.
+     if(!process.env.FLW_SECRET_KEY) throw e;
    }
-   if(!charge)return json(res,404,{error:'Flutterwave could not find a payment with that reference.'});
+
+   // Legacy Flutterwave purchases may use a merchant tx_ref or Flutterwave flw_ref.
+   // The receipt shown to the customer can contain the latter. v3 verification is
+   // intentionally server-side and requires the merchant's legacy secret key.
+   if(!charge && process.env.FLW_SECRET_KEY){
+     const legacyFetch=async(path)=>{
+       const r=await fetch(`https://api.flutterwave.com/v3${path}`,{
+         method:'GET',
+         headers:{Authorization:`Bearer ${process.env.FLW_SECRET_KEY}`,'Content-Type':'application/json','Accept':'application/json'}
+       });
+       const text=await r.text();
+       let j={}; try{j=JSON.parse(text)}catch{}
+       if(!r.ok){
+         const e=new Error(j?.message||j?.error||`Flutterwave legacy verification failed (${r.status})`);
+         e.status=r.status; throw e;
+       }
+       return j;
+     };
+
+     // 1) Try the merchant reference endpoint directly.
+     try{
+       const r=await legacyFetch(`/transactions/verify_by_reference?tx_ref=${encodeURIComponent(reference)}`);
+       const d=r?.data;
+       if(d) charge={...d,status:d.status==='successful'?'succeeded':d.status,reference:d.tx_ref||'',flutterwaveReference:d.flw_ref||''};
+     }catch{}
+
+     // 2) If the receipt contains flw_ref instead of tx_ref, find successful
+     // transactions for this customer and match either reference exactly. Prefer a
+     // narrow date window around a matching local order when one exists.
+     if(!charge){
+       const localDate=candidates.map(o=>o.createdAt?.toDate?o.createdAt.toDate():new Date(o.createdAt||0)).find(d=>Number.isFinite(d?.getTime?.())&&d.getTime()>0);
+       const now=new Date();
+       const fromDate=localDate?new Date(localDate.getTime()-7*24*60*60*1000):new Date(now.getTime()-3650*24*60*60*1000);
+       const toDate=localDate?new Date(localDate.getTime()+7*24*60*60*1000):now;
+       for(let page=1;page<=10&&!charge;page++){
+         const qs=new URLSearchParams({customer_email:email,status:'successful',from:fromDate.toISOString().slice(0,10),to:toDate.toISOString().slice(0,10),page:String(page)});
+         let r; try{r=await legacyFetch(`/transactions?${qs.toString()}`)}catch{break}
+         const rows=Array.isArray(r?.data)?r.data:[];
+         const hit=rows.find(t=>normalize(t.tx_ref)===normalize(reference)||normalize(t.flw_ref)===normalize(reference));
+         if(hit) charge={...hit,status:hit.status==='successful'?'succeeded':hit.status,reference:hit.tx_ref||'',flutterwaveReference:hit.flw_ref||''};
+         if(rows.length===0)break;
+       }
+     }
+   }
+   if(!charge)return json(res,404,{error:'Flutterwave could not find a payment with that reference. For an older purchase, make sure the legacy Flutterwave secret key is configured on the server.'});
 
    const chargeEmail=normalize(charge.customer?.email||charge.customer_email||charge.email||'');
    if(chargeEmail && chargeEmail!==email)return json(res,403,{error:'The purchase email does not match the Flutterwave payment.'});
 
    let recoveryOrder=candidates.find(o=>refFields.some(k=>normalize(o[k])===normalize(reference)))||null;
+   if(!recoveryOrder && normalize(charge.reference)===normalize(reference)) recoveryOrder=candidates.find(o=>refFields.some(k=>normalize(o[k])===normalize(charge.reference)))||null;
+   if(!recoveryOrder && normalize(charge.flutterwaveReference)===normalize(reference)) recoveryOrder=candidates.find(o=>refFields.some(k=>normalize(o[k])===normalize(charge.flutterwaveReference)))||null;
    const chargeId=String(charge.id||'');
    if(!recoveryOrder && chargeId)recoveryOrder=candidates.find(o=>String(o.flutterwaveChargeId||'')===chargeId)||null;
    // Newer v4 charges include our order ID in metadata. This is the strongest legacy
@@ -65,16 +112,19 @@ export default async function handler(req,res){ if(!method(req,res,['GET','POST'
    if(!recoveryOrder)return json(res,404,{error:'No purchase record matched that payment. If this is an older purchase, make sure you entered the same email used at checkout.'});
    if(normalize(recoveryOrder.email)!==email)return json(res,403,{error:'The purchase email does not match that payment.'});
 
-   const valid=charge.status==='succeeded'
+   const referenceMatches=normalize(charge.reference)===normalize(reference)||normalize(charge.flutterwaveReference)===normalize(reference);
+   const valid=(charge.status==='succeeded'||charge.status==='successful')
      && Number(charge.amount)===Number(recoveryOrder.amount)
      && String(charge.currency||'').toUpperCase()===String(recoveryOrder.currency||'').toUpperCase()
-     && normalize(charge.reference)===normalize(reference);
+     && referenceMatches;
    if(!valid)return json(res,409,{error:'Flutterwave could not confirm that payment as a completed charge for this purchase.'});
 
-   const paid=await markPaid(recoveryOrder.id,{...charge,reference:charge.reference||reference});
+   const merchantReference=charge.reference||recoveryOrder.reference||reference;
+   const flutterwaveReference=charge.flutterwaveReference||charge.flw_ref||recoveryOrder.flutterwaveReference||reference;
+   const paid=await markPaid(recoveryOrder.id,{...charge,reference:merchantReference,flutterwaveReference});
    recoveryOrder.status='paid';
-   recoveryOrder.reference=charge.reference||recoveryOrder.reference||reference;
-   recoveryOrder.flutterwaveReference=charge.reference||recoveryOrder.flutterwaveReference||reference;
+   recoveryOrder.reference=merchantReference;
+   recoveryOrder.flutterwaveReference=flutterwaveReference;
    recoveryOrder.receiptStatus=paid.receiptStatus;
    if(!String(recoveryOrder.driveFileId||'').trim())return json(res,409,{error:'This purchase is verified, but its source file is not ready for recovery yet.'});
    const token=signDownloadToken(recoveryOrder.id,24*60*60);
