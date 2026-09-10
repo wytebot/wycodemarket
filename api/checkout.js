@@ -74,7 +74,7 @@ export default async function handler(req,res){
       headers:{'X-Idempotency-Key':orderId.replaceAll('-','')},
       body:JSON.stringify({
         amount,currency,reference,redirect_url:redirect,
-        customer:{email,name:names,meta:{order_id:orderId,product_id:productId}},
+        customer:{email,name:names},
         payment_method:{type:'card',card:encryptedCard},
         meta:{order_id:orderId,product_id:productId}
       })
@@ -83,6 +83,10 @@ export default async function handler(req,res){
     await getDb().collection('orders').doc(orderId).set({flutterwaveChargeId:data.id||'',flutterwaveStatus:data.status||'pending',updatedAt:new Date()},{merge:true});
     return json(res,200,{orderId,reference,status:data.status||'pending',chargeId:data.id||'',nextAction:data.next_action||null});
   }catch(e){
-    json(res,e.status&&e.status<500?e.status:500,{error:e.message||'Checkout failed',details:process.env.NODE_ENV==='production'?undefined:e.data});
+    const apiError=e?.data?.error||{};
+    const validation=Array.isArray(apiError.validation_errors)?apiError.validation_errors:[];
+    const safeDetails={code:apiError.code||'',type:apiError.type||'',validation_errors:validation};
+    const message=apiError.message||e.message||'Checkout failed';
+    json(res,e.status&&e.status<500?e.status:500,{error:message,details:safeDetails});
   }
 }
