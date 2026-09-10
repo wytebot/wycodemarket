@@ -17,7 +17,7 @@ function cleanCard(card){
   const y=Number(year),now=new Date(),current=now.getFullYear(),currentMonth=now.getMonth()+1;
   if(y<2000||y>2099)throw cardError('Enter an expiry year between 2000 and 2099');
   if(y<current||(y===current&&Number(month)<currentMonth))throw cardError('Your card expiry date has passed');
-  return {number,cvv,month,year};
+  return {number,cvv,month,year:year.slice(-2)};
 }
 
 const PRICES={USD:{amount:16,currency:'USD'},NGN:{amount:17500,currency:'NGN'}};
