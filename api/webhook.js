@@ -27,7 +27,8 @@ export default async function handler(req,res){
         if(d.id){
           const charge=await flwRequest(`/charges/${encodeURIComponent(d.id)}`,{method:'GET'});
           const c=charge.data||{};
-          const valid=c.status==='succeeded'&&Number(c.amount)===Number(o.amount)&&String(c.currency).toUpperCase()===String(o.currency).toUpperCase()&&String(c.reference)===String(o.reference);
+          const expectedReference=o.reference||o.flutterwaveReference||d.reference||'';
+          const valid=c.status==='succeeded'&&Number(c.amount)===Number(o.amount)&&String(c.currency).toUpperCase()===String(o.currency).toUpperCase()&&(!expectedReference||String(c.reference)===String(expectedReference));
           if(valid) await markPaid(ref.id,{...c,reference:c.reference||o.reference});
           await ref.set({flutterwaveStatus:c.status||d.status,webhookId:p.id||'',updatedAt:new Date()},{merge:true});
         }
