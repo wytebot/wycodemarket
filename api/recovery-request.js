@@ -6,11 +6,6 @@ const normEmail=v=>String(v||'').trim().toLowerCase();
 const hashEmail=e=>crypto.createHash('sha256').update(e).digest('hex');
 const otpHash=(email,otp)=>crypto.createHmac('sha256',String(process.env.DOWNLOAD_TOKEN_SECRET||'')).update(`${email}:${otp}`).digest('hex');
 const generic={ok:true,message:'If an eligible purchase exists for this email, we sent a verification code. Check your inbox.'};
-function isPro(email,customer){
-  if(customer?.pro===true||customer?.plan==='pro')return true;
-  const allowed=String(process.env.PRO_RECOVERY_EMAILS||'').split(',').map(normEmail).filter(Boolean);
-  return allowed.includes(email);
-}
 async function sendEmail(to,subject,html){
   const key=String(process.env.RESEND_API_KEY||'').trim(),from=String(process.env.RECOVERY_FROM_EMAIL||'').trim();
   if(!key||!from)throw new Error('Recovery email delivery is not configured.');
@@ -25,12 +20,9 @@ export default async function handler(req,res){
     const b=await body(req),email=normEmail(b.email);
     if(!emailRx.test(email))return json(res,400,{error:'Enter a valid email address.'});
     const db=getDb();
-    const customerSnap=await db.collection('customers').doc(Buffer.from(email).toString('base64url')).get();
-    const customer=customerSnap.exists?customerSnap.data():null;
-    const eligible=isPro(email,customer);
-    const ordersSnap=eligible?await db.collection('orders').where('email','==',email).get():null;
-    const paid=ordersSnap?ordersSnap.docs.filter(d=>d.data().status==='paid'&&d.data().driveFileId):[];
-    if(!eligible||!paid.length)return json(res,200,generic);
+    const ordersSnap=await db.collection('orders').where('email','==',email).get();
+    const paid=ordersSnap.docs.filter(d=>d.data().status==='paid'&&d.data().driveFileId);
+    if(!paid.length)return json(res,200,generic);
 
     const rateRef=db.collection('recoveryRequests').doc(hashEmail(email));
     const rateSnap=await rateRef.get();const now=Date.now();

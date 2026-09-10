@@ -37,9 +37,16 @@ export default async function handler(req,res){
     const p=doc.data();
     if(!['active','published'].includes(p.status))return json(res,400,{error:'Product is not available'});
     if(!String(p.driveFileId||'').trim())return json(res,409,{error:'This product is not ready for delivery yet. Please try another product.'});
-    const amount=Number(p.price);
-    const currency=String(p.currency||'USD').toUpperCase();
-    if(!Number.isFinite(amount)||amount<0.01)return json(res,400,{error:'Product price must be at least 0.01'});
+    const requestedCurrency=String(b.currency||'').toUpperCase();
+    const usd=Number(p.priceUSD), ngn=Number(p.priceNGN);
+    const legacyAmount=Number(p.price), legacyCurrency=String(p.currency||'USD').toUpperCase();
+    const available={};
+    if(Number.isFinite(usd)&&usd>=0.01)available.USD=usd;
+    if(Number.isFinite(ngn)&&ngn>=0.01)available.NGN=ngn;
+    if(!Object.keys(available).length&&Number.isFinite(legacyAmount)&&legacyAmount>=0.01)available[legacyCurrency]=legacyAmount;
+    const currency=requestedCurrency||legacyCurrency;
+    const amount=available[currency];
+    if(!Number.isFinite(amount)||amount<0.01)return json(res,400,{error:`This product does not have a valid ${currency} price. Choose an available currency.`});
 
     const orderId=crypto.randomUUID();
     const reference=`WYC${orderId.replaceAll('-','').slice(0,30)}`;

@@ -24,9 +24,6 @@ export default async function handler(req,res){
   const expected=otpHash(email,otp),stored=String(r.otpHash||'');
   if(expected.length!==stored.length||!crypto.timingSafeEqual(Buffer.from(expected),Buffer.from(stored))){await ref.set({attempts:Number(r.attempts||0)+1},{merge:true});return json(res,401,{error:'The recovery code is invalid or expired.'});}
 
-  const customerSnap=await db.collection('customers').doc(Buffer.from(email).toString('base64url')).get();
-  const customer=customerSnap.exists?customerSnap.data():null;
-  if(!(customer?.pro===true||customer?.plan==='pro'))return json(res,401,{error:'The recovery code is invalid or expired.'});
   const ordersSnap=await db.collection('orders').where('email','==',email).get();
   const orders=ordersSnap.docs.map(d=>({id:d.id,...d.data()})).filter(o=>o.status==='paid'&&o.driveFileId);
   if(!orders.length)return json(res,401,{error:'The recovery code is invalid or expired.'});
