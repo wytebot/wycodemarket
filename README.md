@@ -105,6 +105,7 @@ The marketplace includes an optional Pro-only purchase recovery flow. A Pro cust
 Recovery email delivery uses Resend over the server-side API; no email API key is exposed to the browser. Configure:
 - `RESEND_API_KEY` — server-only Resend API key.
 - `RECOVERY_FROM_EMAIL` — verified sender address/domain in Resend.
+- The same Resend settings are used for automatic purchase receipts after a payment is server-verified. Receipt delivery failure never changes a verified order back to unpaid; the customer can use free purchase recovery to obtain a fresh download link.
 - `PRO_RECOVERY_EMAILS` — optional comma-separated Pro email allowlist for testing/manual Pro access.
 
 A customer document may also be marked `pro: true` or `plan: "pro"` in Firestore. This keeps the feature locked by default until your Pro billing/entitlement system is connected. `DOWNLOAD_TOKEN_SECRET` must remain configured because it signs the recovery links.

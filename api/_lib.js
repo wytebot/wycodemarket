@@ -221,6 +221,26 @@ export function randomNonce() {
   return Array.from(bytes,b=>chars[b%chars.length]).join('');
 }
 
+export async function sendPurchaseReceipt({to,name,productName,orderId,amount,currency,reference}) {
+  const key=String(process.env.RESEND_API_KEY||'').trim();
+  const from=String(process.env.RECOVERY_FROM_EMAIL||'').trim();
+  if(!key||!from) throw new Error('Receipt email delivery is not configured. Set RESEND_API_KEY and RECOVERY_FROM_EMAIL.');
+  const appUrl=String(process.env.APP_URL||'').trim().replace(/\/$/,'');
+  if(!/^https:\/\/[^\s]+$/i.test(appUrl)) throw new Error('APP_URL must be a valid HTTPS URL');
+  const token=signDownloadToken(orderId,24*60*60);
+  const downloadUrl=`${appUrl}/api/download?token=${encodeURIComponent(token)}`;
+  const safeName=String(name||'Customer').replace(/[<>]/g,'');
+  const safeProduct=String(productName||'Source code').replace(/[<>]/g,'');
+  const safeRef=String(reference||'').replace(/[<>]/g,'');
+  const safeAmount=Number(amount).toLocaleString('en-NG',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const safeCurrency=String(currency||'').toUpperCase();
+  const html=`<div style=\"font-family:Arial,sans-serif;line-height:1.6;color:#111827\"><h2>Payment successful — WyCode Market</h2><p>Hi ${safeName},</p><p>Your payment for <b>${safeProduct}</b> was successfully verified.</p><p><b>Amount:</b> ${safeCurrency} ${safeAmount}<br><b>Reference:</b> ${safeRef}</p><p><a href=\"${downloadUrl}\" style=\"display:inline-block;padding:12px 18px;background:#111827;color:#fff;text-decoration:none;border-radius:8px\">Download source code</a></p><p>This secure download link expires in 24 hours. You can use the free purchase recovery flow later if you need a fresh link.</p><p>— WyCode Market</p></div>`;
+  const r=await fetch('https://api.resend.com/emails',{method:'POST',headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json'},body:JSON.stringify({from,to:[String(to).trim().toLowerCase()],subject:`Payment receipt — ${safeProduct}`,html})});
+  const text=await r.text(); let data={}; try{data=JSON.parse(text)}catch{}
+  if(!r.ok) throw new Error(data?.message||`Receipt email delivery failed (${r.status})`);
+  return data;
+}
+
 export async function markPaid(orderId, charge) {
   const db=getDb();
   const ref=db.collection('orders').doc(orderId);
@@ -248,6 +268,15 @@ export async function markPaid(orderId, charge) {
       customerUpdate.lastProductName=order.productName||'';
     }
     await customerRef.set(customerUpdate,{merge:true});
+    if(order.kind!=='pro') {
+      try {
+        await sendPurchaseReceipt({to:email,name:order.name,productName:order.productName,orderId,amount:order.amount,currency:order.currency,reference:order.reference});
+        await ref.set({receiptStatus:'sent',receiptSentAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});
+      } catch(receiptError) {
+        console.error('purchase-receipt:',receiptError?.message||receiptError);
+        await ref.set({receiptStatus:'failed',receiptError:String(receiptError?.message||receiptError).slice(0,500)},{merge:true});
+      }
+    }
   }
   return ref;
 }
