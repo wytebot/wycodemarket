@@ -1,6 +1,7 @@
 import {getDb,flwRequest,json,method,body,signDownloadToken,markPaid} from './_lib.js';
 export default async function handler(req,res){ if(!method(req,res,['GET','POST']))return; try{ const b=req.method==='POST'?await body(req):req.query||{};
- if(req.method==='POST' && String(b.action||'').toLowerCase()==='recover_purchase'){
+ // Recovery accepts the explicit action flag and also the email+reference shape so an older cached frontend cannot fall through to the normal orderId verification path.
+ if(req.method==='POST' && (String(b.action||'').toLowerCase()==='recover_purchase' || (!b.orderId && b.email && b.reference))){
    const inputEmail=String(b.email||'').trim();
    const email=inputEmail.toLowerCase();
    const reference=String(b.reference||'').trim();
@@ -8,6 +9,8 @@ export default async function handler(req,res){ if(!method(req,res,['GET','POST'
    if(reference.length<8||reference.length>100)return json(res,400,{error:'Enter the Flutterwave payment reference from your original payment receipt.'});
 
    const db=getDb();
+   const legacySecret=String(process.env.FLW_SECRET_KEY||process.env.FLW_LEGACY_SECRET_KEY||'').trim();
+   const looksLegacy=/[^a-zA-Z0-9-]/.test(reference)||reference.includes('_')||reference.includes('/');
    const normalize=v=>String(v??'').trim().toLowerCase();
    const refFields=['reference','flutterwaveReference','tx_ref','txRef','transactionRef','transaction_reference','paymentReference','payment_ref','flw_ref','flwRef'];
    const candidateMap=new Map();
@@ -30,17 +33,20 @@ export default async function handler(req,res){ if(!method(req,res,['GET','POST'
    }catch(e){
      // Keep the v4 error only if no legacy credential is available. Otherwise the
      // legacy verifier below may still be able to validate an older transaction.
-     if(!process.env.FLW_SECRET_KEY) throw e;
+     if(!legacySecret) {
+       if(looksLegacy) return json(res,503,{error:'This is an older Flutterwave reference. Add your legacy Flutterwave Secret Key to Vercel as FLW_SECRET_KEY, then redeploy before using purchase recovery.'});
+       throw e;
+     }
    }
 
    // Legacy Flutterwave purchases may use a merchant tx_ref or Flutterwave flw_ref.
    // The receipt shown to the customer can contain the latter. v3 verification is
    // intentionally server-side and requires the merchant's legacy secret key.
-   if(!charge && process.env.FLW_SECRET_KEY){
+   if(!charge && legacySecret){
      const legacyFetch=async(path)=>{
        const r=await fetch(`https://api.flutterwave.com/v3${path}`,{
          method:'GET',
-         headers:{Authorization:`Bearer ${process.env.FLW_SECRET_KEY}`,'Content-Type':'application/json','Accept':'application/json'}
+         headers:{Authorization:`Bearer ${legacySecret}`,'Content-Type':'application/json','Accept':'application/json'}
        });
        const text=await r.text();
        let j={}; try{j=JSON.parse(text)}catch{}
@@ -56,7 +62,9 @@ export default async function handler(req,res){ if(!method(req,res,['GET','POST'
        const r=await legacyFetch(`/transactions/verify_by_reference?tx_ref=${encodeURIComponent(reference)}`);
        const d=r?.data;
        if(d) charge={...d,status:d.status==='successful'?'succeeded':d.status,reference:d.tx_ref||'',flutterwaveReference:d.flw_ref||''};
-     }catch{}
+     }catch(e){
+       if(e?.status===401||e?.status===403)return json(res,502,{error:'Flutterwave rejected the legacy Secret Key. Check that FLW_SECRET_KEY is the correct key for the same Flutterwave environment where the older payment was made.'});
+     }
 
      // 2) If the receipt contains flw_ref instead of tx_ref, find successful
      // transactions for this customer and match either reference exactly. Prefer a
@@ -68,7 +76,7 @@ export default async function handler(req,res){ if(!method(req,res,['GET','POST'
        const toDate=localDate?new Date(localDate.getTime()+7*24*60*60*1000):now;
        for(let page=1;page<=10&&!charge;page++){
          const qs=new URLSearchParams({customer_email:email,status:'successful',from:fromDate.toISOString().slice(0,10),to:toDate.toISOString().slice(0,10),page:String(page)});
-         let r; try{r=await legacyFetch(`/transactions?${qs.toString()}`)}catch{break}
+         let r; try{r=await legacyFetch(`/transactions?${qs.toString()}`)}catch(e){if(e?.status===401||e?.status===403)return json(res,502,{error:'Flutterwave rejected the legacy Secret Key. Check that FLW_SECRET_KEY is the correct key for the same Flutterwave environment where the older payment was made.'});break}
          const rows=Array.isArray(r?.data)?r.data:[];
          const hit=rows.find(t=>normalize(t.tx_ref)===normalize(reference)||normalize(t.flw_ref)===normalize(reference));
          if(hit) charge={...hit,status:hit.status==='successful'?'succeeded':hit.status,reference:hit.tx_ref||'',flutterwaveReference:hit.flw_ref||''};
