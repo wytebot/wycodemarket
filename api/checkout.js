@@ -12,11 +12,12 @@ function cleanCard(card){
   const number=String(card.number||'').replace(/\D/g,'');
   const cvv=String(card.cvv||'').replace(/\D/g,'');
   const month=String(card.expiry_month||'').replace(/\D/g,'');
-  const year=String(card.expiry_year||'').replace(/\D/g,'');
+  const rawYear=String(card.expiry_year||'').replace(/\D/g,'');
+  const year=rawYear.length===4?rawYear.slice(-2):rawYear;
   if(!/^\d{12,19}$/.test(number)) throw cardError('Enter a valid card number');
   if(!/^\d{3,4}$/.test(cvv)) throw cardError('Enter a valid CVV');
   if(!/^(0[1-9]|1[0-2])$/.test(month)) throw cardError('Enter a valid expiry month');
-  if(!/^\d{2,4}$/.test(year)) throw cardError('Enter a valid expiry year');
+  if(!/^\d{2}$/.test(year)) throw cardError('Enter a valid expiry year');
   return {number,cvv,month,year};
 }
 
