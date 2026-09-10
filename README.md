@@ -98,14 +98,10 @@ The Pro checkout uses the same server-only `FLW_CLIENT_ID`, `FLW_CLIENT_SECRET`,
 ### Free Pro testing
 Set server-only `PRO_FREE_TEST_MODE=true` on a Vercel Preview/testing environment to activate Pro for free. In this mode no Flutterwave charge is created; the backend grants `pro: true` / `plan: "pro"` and records a `free-test` Pro order. The UI automatically shows a clear TEST MODE notice. **Disable `PRO_FREE_TEST_MODE` before enabling live Pro payments.**
 
-## Pro purchase recovery
+## Purchase recovery
 
-The marketplace includes an optional Pro-only purchase recovery flow. A Pro customer enters the email used for purchases, receives a one-time code, and after verification receives an email containing secure download links for all completed purchases associated with that email. Recovery links expire after 24 hours.
+The marketplace includes a free purchase recovery flow that does not use Resend, Gmail, SMS, or another email provider. A customer enters the email used at checkout and the unique Flutterwave payment reference from that purchase. The backend matches the reference to the server-side order, verifies the email and `paid` status, then issues a fresh 24-hour HMAC download token. No OTP is generated or emailed.
 
-Recovery email delivery uses Resend over the server-side API; no email API key is exposed to the browser. Configure:
-- `RESEND_API_KEY` — server-only Resend API key.
-- `RECOVERY_FROM_EMAIL` — verified sender address/domain in Resend.
-- The same Resend settings are used for automatic purchase receipts after a payment is server-verified. Receipt delivery failure never changes a verified order back to unpaid; the customer can use free purchase recovery to obtain a fresh download link.
-- `PRO_RECOVERY_EMAILS` — optional comma-separated Pro email allowlist for testing/manual Pro access.
+The recovery action is available from the collapsible navigation menu. The standalone recovery banner has been removed.
 
-A customer document may also be marked `pro: true` or `plan: "pro"` in Firestore. This keeps the feature locked by default until your Pro billing/entitlement system is connected. `DOWNLOAD_TOKEN_SECRET` must remain configured because it signs the recovery links.
+`DOWNLOAD_TOKEN_SECRET` must remain configured because it signs the recovered download links.
