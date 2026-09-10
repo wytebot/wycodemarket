@@ -60,7 +60,8 @@ function parseFlutterwaveError(text) {
   };
 }
 
-export async function flwToken() {
+let tokenCache=null; // {token, expiresAt, environment} — kept in module scope so it survives across warm invocations of the same serverless function
+export async function flwToken({forceRefresh=false}={}) {
   const clientId = process.env.FLW_CLIENT_ID;
   const clientSecret = process.env.FLW_CLIENT_SECRET;
   if (!clientId || !clientSecret) {
@@ -70,6 +71,9 @@ export async function flwToken() {
     throw e;
   }
   const environment=flutterwaveEnvironment();
+  if (!forceRefresh && tokenCache && tokenCache.environment===environment && tokenCache.expiresAt>Date.now()) {
+    return tokenCache.token;
+  }
   const form = new URLSearchParams({client_id:clientId, client_secret:clientSecret, grant_type:'client_credentials'});
   const tokenEndpoint='https://idp.flutterwave.com/realms/flutterwave/protocol/openid-connect/token';
   const trace=crypto.randomUUID().replaceAll('-','');
@@ -110,10 +114,12 @@ export async function flwToken() {
     e.data={error:{type:'OAUTH_RESPONSE_INVALID',code:'NO_ACCESS_TOKEN',message:e.message},diagnostic:{phase:'oauth',environment,api_base_url:flwBase(),endpoint:tokenEndpoint,trace_id:trace}};
     throw e;
   }
+  const ttlSeconds=Number.isFinite(Number(j.expires_in))?Number(j.expires_in):3300; // fall back to 55 min if Flutterwave omits expires_in
+  tokenCache={token:j.access_token,expiresAt:Date.now()+Math.max(30,ttlSeconds-60)*1000,environment};
   return j.access_token;
 }
 
-export async function flwRequest(path, options={}) {
+export async function flwRequest(path, options={}, _retried=false) {
   const token = await flwToken();
   const environment=flutterwaveEnvironment();
   const base=flwBase();
@@ -125,6 +131,11 @@ export async function flwRequest(path, options={}) {
     ...(options.headers||{})
   };
   const r = await fetch(base+path,{...options,headers});
+  if (r.status===401 && !_retried) {
+    // Cached token was rejected (expired/revoked) — refresh once and retry rather than failing the whole payment
+    await flwToken({forceRefresh:true});
+    return flwRequest(path, options, true);
+  }
   const text = await r.text();
   const parsed=parseFlutterwaveError(text);
   if (!r.ok) {
@@ -248,9 +259,11 @@ export async function markPaid(orderId, charge) {
   if(!snap.exists) throw new Error('Order not found');
   const order=snap.data();
   const alreadyPaid=order.status==='paid';
-  await ref.set({status:'paid',paidAt:alreadyPaid?(order.paidAt||admin.firestore.FieldValue.serverTimestamp()):admin.firestore.FieldValue.serverTimestamp(),flutterwaveChargeId:charge.id||order.flutterwaveChargeId||'',flutterwaveReference:charge.reference||order.reference,verifiedAmount:Number(charge.amount),verifiedCurrency:charge.currency,updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});
+  await ref.set({status:'paid',paidAt:alreadyPaid?(order.paidAt||admin.firestore.FieldValue.serverTimestamp()):admin.firestore.FieldValue.serverTimestamp(),flutterwaveChargeId:charge.id||order.flutterwaveChargeId||'',flutterwaveReference:charge.reference||order.reference,flutterwaveStatus:charge.status||order.flutterwaveStatus||'',verifiedAmount:Number(charge.amount),verifiedCurrency:charge.currency,updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});
+  let receiptStatus=order.receiptStatus||'';
+  const tasks=[];
   if(!alreadyPaid && order.productId){
-    await db.collection('products').doc(order.productId).set({sales:admin.firestore.FieldValue.increment(1),updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});
+    tasks.push(db.collection('products').doc(order.productId).set({sales:admin.firestore.FieldValue.increment(1),updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true}));
   }
   if(order.email && !alreadyPaid){
     const email=String(order.email).trim().toLowerCase();
@@ -267,16 +280,23 @@ export async function markPaid(orderId, charge) {
       customerUpdate.lastProductId=order.productId||'';
       customerUpdate.lastProductName=order.productName||'';
     }
-    await customerRef.set(customerUpdate,{merge:true});
+    tasks.push(customerRef.set(customerUpdate,{merge:true}));
     if(order.kind!=='pro') {
-      try {
-        await sendPurchaseReceipt({to:email,name:order.name,productName:order.productName,orderId,amount:order.amount,currency:order.currency,reference:order.reference});
-        await ref.set({receiptStatus:'sent',receiptSentAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});
-      } catch(receiptError) {
-        console.error('purchase-receipt:',receiptError?.message||receiptError);
-        await ref.set({receiptStatus:'failed',receiptError:String(receiptError?.message||receiptError).slice(0,500)},{merge:true});
-      }
+      receiptStatus='sent';
+      tasks.push(
+        sendPurchaseReceipt({to:email,name:order.name,productName:order.productName,orderId,amount:order.amount,currency:order.currency,reference:order.reference})
+          .then(()=>ref.set({receiptStatus:'sent',receiptSentAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true}))
+          .catch(receiptError=>{
+            receiptStatus='failed';
+            console.error('purchase-receipt:',receiptError?.message||receiptError);
+            return ref.set({receiptStatus:'failed',receiptError:String(receiptError?.message||receiptError).slice(0,500)},{merge:true});
+          })
+      );
     }
   }
-  return ref;
+  // Sales count, customer profile and the receipt email are independent of each other, so run them
+  // concurrently instead of one-after-another — this is the main latency win for the payment flow,
+  // since the receipt email (a third-party API call) no longer sits behind two extra Firestore writes.
+  await Promise.all(tasks);
+  return {ref,receiptStatus};
 }

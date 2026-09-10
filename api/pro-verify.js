@@ -19,7 +19,6 @@ export default async function handler(req,res){
     const valid=charge.status==='succeeded' && Number(charge.amount)===Number(order.amount) && String(charge.currency).toUpperCase()===String(order.currency).toUpperCase() && String(charge.reference)===String(order.reference);
     if(valid){
       await markPaid(orderId,{...charge,reference:charge.reference||order.reference});
-      await ref.set({flutterwaveStatus:charge.status},{merge:true});
       return json(res,200,{status:'paid',plan:'pro',amount:order.amount,currency:order.currency});
     }
     if(['failed','voided'].includes(charge.status))await ref.set({status:'failed',flutterwaveStatus:charge.status},{merge:true});

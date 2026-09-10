@@ -12,7 +12,7 @@ function App(){const[products,setProducts]=useState([]),[selected,setSelected]=u
  async function loadProMode(){try{const h=await api('/api/health');setProFreeTest(h?.features?.proFreeTest===true)}catch{setProFreeTest(false)}}
  async function loadProducts(){setCatalogError('');setRetrying(true);try{const x=await api('/api/products');setProducts(Array.isArray(x.products)?x.products:[])}catch(e){setCatalogError(e.message||'We could not load products.')}finally{setLoading(false);setRetrying(false)}}
  useEffect(()=>{loadProducts();loadProMode();const params=new URLSearchParams(location.search);if(params.get('payment')==='return'&&params.get('order'))poll(params.get('order'));if(params.get('payment')==='pro-return'&&params.get('order'))pollPro(params.get('order'));const close=e=>{if(menuRef.current&&!menuRef.current.contains(e.target))setMenu(false);document.querySelectorAll('details[open]').forEach(d=>{if(!d.contains(e.target))d.removeAttribute('open')})};const esc=e=>{if(e.key==='Escape'){setMenu(false);setSelected(null);setDetailsProduct(null);document.querySelectorAll('details[open]').forEach(d=>d.removeAttribute('open'))}};document.addEventListener('pointerdown',close);document.addEventListener('keydown',esc);return()=>{document.removeEventListener('pointerdown',close);document.removeEventListener('keydown',esc)}},[]);
- async function pollPro(order){setProModal(true);setProPaid(false);setMsg('Confirming your Pro payment…');for(let i=0;i<10;i++){try{const x=await api(`/api/pro-verify?orderId=${encodeURIComponent(order)}`);if(x.status==='paid'){setMsg('Pro payment verified. Pro access is now active.');setProPaid(true);return}if(x.status==='failed'){setMsg('Pro payment was not completed. You can try again.');return}}catch(e){if(i===9)setMsg(e.message||'Pro payment verification failed.')}await new Promise(r=>setTimeout(r,2500))}setMsg('Pro payment is still processing. You can close this message and check again later.')}
+ async function pollPro(order){setProModal(true);setProPaid(false);setMsg('Confirming your Pro payment…');for(let i=0;i<10;i++){try{const x=await api(`/api/pro-verify?orderId=${encodeURIComponent(order)}`);if(x.status==='paid'){setMsg('Pro payment verified. Pro access is now active.');setProPaid(true);return}if(x.status==='failed'){setMsg('Pro payment was not completed. You can try again.');return}}catch(e){if(i===9)setMsg(e.message||'Pro payment verification failed.')}await new Promise(r=>setTimeout(r,i<4?800:2500))}setMsg('Pro payment is still processing. You can close this message and check again later.')}
  async function poll(order,maxAttempts=24){
   setSelected(v=>({...v,paid:false,processing:true,failed:false,name:v?.name||'Payment',orderId:order}));
   setMsg('Confirming your payment…');
@@ -36,7 +36,7 @@ function App(){const[products,setProducts]=useState([]),[selected,setSelected]=u
    }catch(e){
     if(i===maxAttempts-1){setMsg(e.message||'Payment verification failed.');setSelected(v=>({...v,paid:false,processing:true,failed:false,stalled:true,orderId:order}));return;}
    }
-   await new Promise(r=>setTimeout(r,2500));
+   await new Promise(r=>setTimeout(r,i<4?800:2500));
   }
   setMsg('Payment is still processing. We have not marked it failed. You can check again.');
   setSelected(v=>({...v,processing:true,stalled:true,orderId:order}));
