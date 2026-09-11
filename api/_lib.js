@@ -240,6 +240,9 @@ export async function markPaid(orderId, charge, options={}) {
   const order=snap.data();
   const alreadyPaid=order.status==='paid';
   await ref.set({status:'paid',paidAt:alreadyPaid?(order.paidAt||admin.firestore.FieldValue.serverTimestamp()):admin.firestore.FieldValue.serverTimestamp(),reference:charge.reference||order.reference||'',flutterwaveChargeId:charge.id||order.flutterwaveChargeId||'',flutterwaveReference:charge.flutterwaveReference||charge.flw_ref||charge.reference||order.flutterwaveReference||order.reference||'',flutterwaveStatus:charge.status||order.flutterwaveStatus||'',verifiedAmount:Number(charge.amount),verifiedCurrency:charge.currency,updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});
+  if(!alreadyPaid && order.productId){
+    await db.collection('products').doc(String(order.productId)).set({sales:admin.firestore.FieldValue.increment(1),updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true}).catch(()=>{});
+  }
   const receiptStatus=order.receiptStatus||'not_sent';
   return {ref,receiptStatus};
 }

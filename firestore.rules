@@ -1,0 +1,11 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // The web app talks to Firestore through the Vercel API using the
+    // Firebase Admin SDK. Browser clients have no direct Firestore access.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
