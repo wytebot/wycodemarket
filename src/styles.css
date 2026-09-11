@@ -49,3 +49,5 @@ button:focus-visible,a:focus-visible,input:focus-visible,summary:focus-visible{o
 .reviewForm .reviewRatingPicker button.active{color:#f5b301!important}.reviewForm .reviewRatingPicker button:hover{color:#f5b301!important;transform:scale(1.08)}
 .reviewForm .reviewRatingPicker button:disabled{cursor:not-allowed!important;opacity:.55}.reviewForm textarea{display:block;position:relative;z-index:1;background:#101010;color:#eee;border-color:#393939}.reviewForm textarea:disabled{opacity:.65}
 .reviewCounter{text-align:right;color:#666;font-size:10px;margin-top:-9px;margin-bottom:5px}.reviewForm .pay.full{position:relative;z-index:2}
+
+.reviewSummary{display:flex;align-items:center;gap:10px;margin-top:16px;flex-wrap:wrap}.reviewSummary strong{font-size:34px}.reviewSummaryStars{color:#f5b301;letter-spacing:2px}.reviewSummary span:last-child{color:#777}.reviewPurchasePicker select{width:100%;box-sizing:border-box;border:1px solid #393939;border-radius:10px;background:#101010;color:#eee;padding:12px;font:inherit;margin-bottom:8px}
