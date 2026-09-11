@@ -75,16 +75,27 @@ export default async function handler(req,res){
     try{decoded=await (await import('firebase-admin')).default.auth().verifyIdToken(bearer)}catch{return json(res,401,{error:'Your anonymous review session is invalid or expired. Please try again.'})}
     const uid=clean(decoded.uid,200);
     if(!uid)return json(res,401,{error:'Anonymous review identity is missing.'});
-    const existing=await readReviews(productId);
-    const same=existing.find(x=>String(x.orderId)===orderId);
-    if(same)return json(res,409,{error:'You already reviewed this purchase.'});
+    // One review is allowed for each successful purchase/order. The deterministic
+    // claim document is the authoritative uniqueness lock, so concurrent requests
+    // cannot create two reviews for the same order (Drive filenames alone are not atomic).
     const reviewId=crypto.createHash('sha256').update(`${productId}:${orderId}`).digest('hex').slice(0,32);
+    const claimRef=db.collection('reviewClaims').doc(reviewId);
+    try{
+      await db.runTransaction(async tx=>{
+        const claim=await tx.get(claimRef);
+        if(claim.exists)throw Object.assign(new Error('You already reviewed this purchase.'),{code:'ALREADY_REVIEWED'});
+        tx.create(claimRef,{reviewId,productId,orderId,reviewerUid:uid,createdAt:new Date()});
+      });
+    }catch(e){
+      if(e?.code==='ALREADY_REVIEWED')return json(res,409,{error:'You already reviewed this purchase.'});
+      throw e;
+    }
     const data={id:reviewId,productId,orderId,rating,comment,anonymous:true,reviewerUid:uid,createdAt:new Date().toISOString()};
     try{
       await d.files.create({requestBody:{name:`review-${safeFilePart(productId)}-${reviewId}.json`,parents:[folder],mimeType:'application/json'},media:{mimeType:'application/json',body:JSON.stringify(data)}});
     }catch(e){
-      const after=await readReviews(productId);
-      if(after.some(x=>String(x.orderId)===orderId))return json(res,409,{error:'You already reviewed this purchase.'});
+      // Release the claim only when the Drive write failed, allowing a safe retry.
+      try{await claimRef.delete()}catch{}
       throw e;
     }
     const oldCount=Math.max(0,Number(product.ratingCount)||0),storedSum=Number(product.ratingSum),oldSum=Number.isFinite(storedSum)?storedSum:(oldCount>0?Number(product.ratingAverage||product.rating||0)*oldCount:0);const nextCount=oldCount+1,nextSum=oldSum+rating,avg=Math.round((nextSum/nextCount)*10)/10;
