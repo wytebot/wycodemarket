@@ -1,4 +1,4 @@
-# WyCode Market v1.2.0
+# WyCode Market v1.3.0
 
 Private source-code marketplace designed for Vercel. The public catalog reads products from Firestore (the same collection used by WyCode Studio). Paid source files remain private in Google Drive.
 
