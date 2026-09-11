@@ -25,7 +25,7 @@ let drive;
 export function getDrive() {
   if (drive) return drive;
   const sa = parseServiceAccount(process.env.GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON);
-  const auth = new google.auth.GoogleAuth({credentials: sa, scopes:['https://www.googleapis.com/auth/drive.readonly']});
+  const auth = new google.auth.GoogleAuth({credentials: sa, scopes:['https://www.googleapis.com/auth/drive']});
   drive = google.drive({version:'v3', auth});
   return drive;
 }

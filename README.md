@@ -35,7 +35,7 @@ Set these in Vercel. Never put these secrets in `VITE_*` variables.
 
 ## Firestore
 WyCode Studio creates documents in `products`. Market expects:
-`name`, `description`, `status` (`active` or `published`), `price`, `currency`, `category`, `version`, `demoUrl`, `coverUrl`, `requirements`, `license`, and `driveFileId`. Optional rating fields are `ratingAverage` and `ratingCount`; verified buyers can submit/update ratings through the Market and those aggregates are stored in Firestore.
+`name`, `description`, `status` (`active` or `published`), `price`, `currency`, `category`, `version`, `demoUrl`, `coverUrl`, `requirements`, `license`, and `driveFileId`. Optional rating fields are `ratingAverage`, `ratingCount`, and `ratingSum`. Verified buyers can submit a star rating and written review through the Market. Review JSON files are stored in Google Drive; aggregate rating fields remain in Firestore for fast catalog display.
 
 Orders are written by the server into `orders`.
 
@@ -95,3 +95,6 @@ Verify legal accordions, outside-touch/Escape dismissal, invalid-input alerts, a
 
 
 
+
+## Buyer reviews
+The Market now has a dedicated Reviews page. Buyers receive an anonymous Firebase identity and submit reviews only when a signed purchase token proves the order is paid and belongs to the selected product. Reviews are stored as individual JSON files in Google Drive under `GOOGLE_DRIVE_REVIEWS_FOLDER_ID`; if that variable is blank, the server creates a `WyCode Reviews` subfolder under `GOOGLE_DRIVE_FOLDER_ID`. The Drive service account therefore needs write access to the configured parent/reviews folder. Enable **Anonymous** sign-in in Firebase Authentication and set the public web API key as `VITE_FIREBASE_API_KEY`. The anonymous identity is not displayed publicly; review records retain an anonymous reviewer UID plus the verified order ID for abuse control.
