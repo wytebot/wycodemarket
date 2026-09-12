@@ -9,7 +9,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "deploy:firestore": "npx firebase-tools deploy --only firestore"
   },
   "dependencies": {
     "@vitejs/plugin-react": "5.0.2",
