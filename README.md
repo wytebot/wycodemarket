@@ -39,6 +39,12 @@ WyCode Studio creates documents in `products`. Market expects:
 
 Orders are written by the server into `orders`.
 
+## Flutterwave configuration diagnostic
+
+After deployment, open `/api/flutterwave-health` to verify the server is actually receiving the Vercel Production v4 credentials. The endpoint never returns the Client Secret; it reports only whether each credential is configured, lengths, and non-reversible fingerprints. A successful response means the OAuth client credentials were accepted by Flutterwave.
+
+If it returns HTTP 401, the failure occurs before Firestore or card processing: Flutterwave rejected the OAuth client credentials. Replace the Production Client ID and Production Client Secret together if they were rotated/revoked.
+
 ## Flutterwave webhook
 Configure this endpoint in the Flutterwave dashboard:
 `https://YOUR-MARKET-DOMAIN/api/webhook`

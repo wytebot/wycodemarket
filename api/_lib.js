@@ -62,8 +62,8 @@ function parseFlutterwaveError(text) {
 
 let tokenCache=null; // {token, expiresAt, environment} — kept in module scope so it survives across warm invocations of the same serverless function
 export async function flwToken({forceRefresh=false}={}) {
-  const clientId = process.env.FLW_CLIENT_ID;
-  const clientSecret = process.env.FLW_CLIENT_SECRET;
+  const clientId = String(process.env.FLW_CLIENT_ID||'').trim();
+  const clientSecret = String(process.env.FLW_CLIENT_SECRET||'').trim();
   if (!clientId || !clientSecret) {
     const e=new Error('Missing Flutterwave v4 credentials.');
     e.status=500;
@@ -71,17 +71,29 @@ export async function flwToken({forceRefresh=false}={}) {
     throw e;
   }
   const environment=flutterwaveEnvironment();
+  if (forceRefresh) tokenCache=null;
   if (!forceRefresh && tokenCache && tokenCache.environment===environment && tokenCache.expiresAt>Date.now()) {
     return tokenCache.token;
   }
   const form = new URLSearchParams({client_id:clientId, client_secret:clientSecret, grant_type:'client_credentials'});
   const tokenEndpoint='https://idp.flutterwave.com/realms/flutterwave/protocol/openid-connect/token';
   const trace=crypto.randomUUID().replaceAll('-','');
-  const r = await fetch(tokenEndpoint, {
-    method:'POST',
-    headers:{'Content-Type':'application/x-www-form-urlencoded','X-Trace-Id':trace},
-    body:form
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000);
+  let r;
+  try {
+    r = await fetch(tokenEndpoint, {
+      method:'POST',
+      headers:{'Content-Type':'application/x-www-form-urlencoded','X-Trace-Id':trace},
+      body:form,
+      signal:controller.signal
+    });
+  } catch (fetchError) {
+    const e=new Error(fetchError?.name==='AbortError'?'Flutterwave OAuth request timed out. Please try again.':`Flutterwave OAuth request failed: ${fetchError?.message||'network error'}`);
+    e.status=502;
+    e.data={error:{type:'OAUTH_NETWORK_ERROR',code:'NETWORK',message:e.message},diagnostic:{phase:'oauth',environment,api_base_url:flwBase(),endpoint:tokenEndpoint,trace_id:trace}};
+    throw e;
+  } finally { clearTimeout(timeout); }
   const text=await r.text();
   const parsed=parseFlutterwaveError(text);
   if (!r.ok) {
@@ -101,7 +113,7 @@ export async function flwToken({forceRefresh=false}={}) {
         api_base_url:flwBase(),
         endpoint:tokenEndpoint,
         trace_id:trace,
-        environment_hint:'Flutterwave v4 credentials are environment-specific. If these credentials were created for the other environment, use the matching v4 Client ID and Client Secret.'
+        environment_hint:r.status===401?'Flutterwave rejected the OAuth client credentials before a payment was created. This is not a Firestore or card error. Verify the Vercel Production FLW_CLIENT_ID and FLW_CLIENT_SECRET belong to the same Flutterwave v4 Production application. If they were recently rotated or revoked, replace both as a pair.':r.status===400?'Flutterwave rejected the OAuth request. Check that FLW_CLIENT_ID and FLW_CLIENT_SECRET are v4 credentials and that grant_type is client_credentials.':'Flutterwave v4 credentials are environment-specific; verify the selected environment and credential pair.'
       }
     };
     throw e;
@@ -132,7 +144,8 @@ export async function flwRequest(path, options={}, _retried=false) {
   };
   const r = await fetch(base+path,{...options,headers});
   if (r.status===401 && !_retried) {
-    // Cached token was rejected (expired/revoked) — refresh once and retry rather than failing the whole payment
+    // A previously cached access token can expire or be revoked while a warm serverless instance is alive.
+    tokenCache=null;
     await flwToken({forceRefresh:true});
     return flwRequest(path, options, true);
   }
