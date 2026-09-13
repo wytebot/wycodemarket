@@ -8,6 +8,9 @@ function fingerprint(value){
 export default async function handler(req,res){
   if(!method(req,res,['GET']))return;
   res.setHeader('Cache-Control','no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
+  if(String(req.query?.mode||'').trim().toLowerCase()!=='flutterwave'){
+    return json(res,200,{ok:true,service:'WyCode Market',version:'1.3.0'});
+  }
   const environment=flutterwaveEnvironment();
   const clientId=String(process.env.FLW_CLIENT_ID||'').trim();
   const clientSecret=String(process.env.FLW_CLIENT_SECRET||'').trim();

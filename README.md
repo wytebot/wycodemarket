@@ -41,7 +41,7 @@ Orders are written by the server into `orders`.
 
 ## Flutterwave configuration diagnostic
 
-After deployment, open `/api/flutterwave-health` to verify the server is actually receiving the Vercel Production v4 credentials. The endpoint never returns the Client Secret; it reports only whether each credential is configured, lengths, and non-reversible fingerprints. A successful response means the OAuth client credentials were accepted by Flutterwave.
+After deployment, open `/api/flutterwave-health?mode=flutterwave` to verify the server is actually receiving the Vercel Production v4 credentials. The same endpoint without the query parameter returns the basic Market health response. The endpoint never returns the Client Secret; it reports only whether each credential is configured, lengths, and non-reversible fingerprints. A successful response means the OAuth client credentials were accepted by Flutterwave.
 
 If it returns HTTP 401, the failure occurs before Firestore or card processing: Flutterwave rejected the OAuth client credentials. Replace the Production Client ID and Production Client Secret together if they were rotated/revoked.
 
@@ -103,4 +103,45 @@ Verify legal accordions, outside-touch/Escape dismissal, invalid-input alerts, a
 
 
 ## Buyer reviews
-The Market now has a dedicated Reviews page. Buyers receive an anonymous Firebase identity and submit reviews only for paid orders. After a successful purchase, a durable review entitlement is created server-side so the buyer can review later even after the short-lived download token expires. Each successful order gets exactly one review claim; the buyer can edit that review later, but cannot create a second review for the same order. If the same product is purchased again, that new order receives its own review entitlement. Reviews are stored as individual JSON files in Google Drive under `GOOGLE_DRIVE_REVIEWS_FOLDER_ID`; if that variable is blank, the server creates a `WyCode Reviews` subfolder under `GOOGLE_DRIVE_FOLDER_ID`. The Drive service account therefore needs write access to the configured parent/reviews folder. Enable **Anonymous** sign-in in Firebase Authentication and set the public web API key as `VITE_FIREBASE_API_KEY`. The anonymous identity is not displayed publicly; review records retain an anonymous reviewer UID plus the verified order ID for abuse control.
+The Market now has a dedicated Reviews page. Buyers receive an anonymous Firebase identity and submit reviews only for paid orders. After a successful purchase, a durable review entitlement is created server-side so the buyer can review later even after the short-lived download token expires. Each successful order gets exactly one review claim; the buyer can edit that review later, but cannot create a second review for the same order. If the same product is purchased again, that new order receives its own review entitlement. Reviews are stored as individual JSON files in Google Drive under `GOOGLE_DRIVE_REVIEWS_FOLDER_ID`; if that variable is blank, the server creates a `WyCode Reviews` subfolder under `GOOGLE_DRIVE_FOLDER_ID`. The Drive service account therefore needs write access to the configured parent/reviews folder. Enable **Anonymous** sign-in in Firebase Authentication and use the hardcoded Firebase Web App configuration in `src/main.jsx`. The anonymous identity is not displayed publicly; review records retain an anonymous reviewer UID plus the verified order ID for abuse control.
+
+
+## Buyer push notifications (FCM)
+
+The Market includes opt-in Firebase Cloud Messaging (FCM) Web Push. Buyers can tap **Get notified** to receive a browser notification whenever a new product is published from WyCode Studio.
+
+The Firebase Web App configuration is intentionally hardcoded in `src/main.jsx` and the generated service worker because this Market uses the same single-owner Firebase project as WyCode Studio. **No Firebase client-side environment variables are required.** The config values are public Firebase app identifiers; Firebase recommends protecting Firestore and other data with Security Rules rather than treating the client config as a secret.
+
+The Market also uses that same hardcoded API key for the anonymous Firebase identity used by verified reviews.
+
+### Client configuration
+
+No `VITE_FIREBASE_*` variables are required. The following public Firebase Web App values are embedded in the source:
+
+- `apiKey`
+- `authDomain`
+- `projectId`
+- `storageBucket`
+- `messagingSenderId`
+- `appId`
+- `measurementId`
+
+### Web Push / VAPID
+
+`getToken()` cannot create a browser push subscription without a VAPID public key — this was previously omitted, which is why **Get notified** failed for every buyer (no token was ever generated, so nothing ever reached the `notificationSubscribers` collection and Studio had 0 subscribers to send to). This is now fixed in code; you just need to supply the key:
+
+1. Open **Firebase Console → Project Settings → Cloud Messaging → Web Push certificates** for the `wycoder` project.
+2. If no key pair exists yet, click **Generate key pair**. Copy the public key string shown.
+3. The key is public (not a secret). Either:
+   - paste it in place of `FCM_VAPID_KEY`'s placeholder value in `src/main.jsx` (same pattern as the hardcoded `firebaseConfig` above it), or
+   - set it as a Vercel environment variable named `VITE_FIREBASE_VAPID_KEY` (available at build time to Vite) — the code prefers this if present.
+4. Redeploy. Until a real key is set, the app fails fast with a clear "Push notifications are not fully configured yet (missing VAPID key)" message instead of a silent/cryptic Firebase error.
+
+### Server-side environment variables
+
+Only server-side credentials remain environment-based:
+
+- `FIREBASE_SERVICE_ACCOUNT_JSON` — private Firebase Admin service-account JSON used by the notification API.
+
+These must never be exposed through `VITE_*` variables. FCM server credentials and registration tokens need secure server-side handling.
+

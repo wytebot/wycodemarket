@@ -135,3 +135,11 @@ button:focus-visible,a:focus-visible,input:focus-visible,summary:focus-visible{o
 .reviewSecure{font-size:10px}
 .reviewRatingPicker button{width:44px;height:44px;font-size:32px!important}
 }
+
+.notifyTop{border:1px solid #393939;border-radius:10px;padding:11px 13px;font-weight:900;background:#151515;color:#f1f1f1;white-space:nowrap}
+.notifyTop:hover{border-color:#666}
+.notifyTop.on{background:#f1f1f1;color:#0b0b0b;border-color:#f1f1f1}
+.notifyTop:disabled{opacity:.65;cursor:wait}
+.pushNotice{position:fixed;right:20px;top:88px;z-index:30;max-width:min(420px,calc(100vw - 40px));display:flex;gap:12px;align-items:center;background:#171717;border:1px solid #3a3a3a;color:#e8e8e8;border-radius:12px;padding:12px 14px;box-shadow:0 16px 50px #0009;font-size:13px}
+.pushNotice button{margin-left:auto;border:0;background:none;color:#aaa;font-size:20px;padding:0 3px}
+@media(max-width:700px){.headerActions{gap:6px}.notifyTop{padding:10px 9px;font-size:11px}.contactTop{padding:10px 9px;font-size:11px}.pushNotice{top:82px;right:10px;max-width:calc(100vw - 20px)}}

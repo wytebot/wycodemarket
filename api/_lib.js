@@ -30,7 +30,7 @@ export function getDrive() {
   return drive;
 }
 
-function flutterwaveEnvironment() {
+export function flutterwaveEnvironment() {
   const raw=String(process.env.FLW_ENVIRONMENT||'').trim().toLowerCase();
   if(!raw) return 'production';
   if(raw==='sandbox'||raw==='test') return 'sandbox';
