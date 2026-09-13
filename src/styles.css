@@ -143,3 +143,24 @@ button:focus-visible,a:focus-visible,input:focus-visible,summary:focus-visible{o
 .pushNotice{position:fixed;right:20px;top:88px;z-index:30;max-width:min(420px,calc(100vw - 40px));display:flex;gap:12px;align-items:center;background:#171717;border:1px solid #3a3a3a;color:#e8e8e8;border-radius:12px;padding:12px 14px;box-shadow:0 16px 50px #0009;font-size:13px}
 .pushNotice button{margin-left:auto;border:0;background:none;color:#aaa;font-size:20px;padding:0 3px}
 @media(max-width:700px){.headerActions{gap:6px}.notifyTop{padding:10px 9px;font-size:11px}.contactTop{padding:10px 9px;font-size:11px}.pushNotice{top:82px;right:10px;max-width:calc(100vw - 20px)}}
+
+
+/* Non-intrusive daily notification opt-in prompt */
+.pushPrompt{position:fixed;top:82px;right:18px;z-index:45;width:min(360px,calc(100vw - 36px));display:flex;align-items:flex-start;gap:11px;background:#171717;color:#f2f2f2;border:1px solid #383838;border-radius:14px;padding:13px 13px 13px 14px;box-shadow:0 14px 42px #0008;animation:pushPromptIn .2s ease-out;box-sizing:border-box}
+.pushPromptIcon{width:32px;height:32px;flex:0 0 32px;display:grid;place-items:center;background:#242424;border-radius:9px;font-size:16px}
+.pushPromptBody{min-width:0;display:flex;flex-direction:column;gap:4px;padding-right:4px}
+.pushPromptBody strong{font-size:13px;letter-spacing:-.01em}
+.pushPromptBody span{font-size:11px;line-height:1.45;color:#aaa}
+.pushPromptActions{display:flex;align-items:center;gap:8px;margin-top:7px}
+.pushPromptEnable,.pushPromptCancel{border-radius:8px;padding:8px 10px;font-size:11px;font-weight:850;cursor:pointer}
+.pushPromptEnable{border:1px solid #eee;background:#eee;color:#111}
+.pushPromptEnable:hover:not(:disabled){background:#fff}
+.pushPromptEnable:disabled{opacity:.55;cursor:wait}
+.pushPromptCancel{border:1px solid #3d3d3d;background:transparent;color:#bbb}
+.pushPromptCancel:hover{color:#fff;border-color:#666}
+.pushPromptClose{position:absolute;right:7px;top:6px;width:25px;height:25px;border:0;background:transparent;color:#777;font-size:19px;line-height:1;cursor:pointer}
+.pushPromptClose:hover{color:#fff}
+@keyframes pushPromptIn{from{opacity:0;transform:translateY(-5px)}to{opacity:1;transform:translateY(0)}}
+@media(max-width:700px){.pushPrompt{top:76px;right:10px;width:min(350px,calc(100vw - 20px));}}
+.manualCardNote{margin:8px 0 2px;color:#8f8f8f;font-size:11px;line-height:1.45;padding:8px 10px;border:1px solid #292929;border-radius:9px;background:#101010}.manualCardNote::before{content:"• ";color:#cfcfcf}
+.hp{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}

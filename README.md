@@ -1,4 +1,4 @@
-# WyCode Market v1.3.0
+# WyCode Market v1.4.3
 
 Private source-code marketplace designed for Vercel. The public catalog reads products from Firestore (the same collection used by WyCode Studio). Paid source files remain private in Google Drive.
 
@@ -145,3 +145,12 @@ Only server-side credentials remain environment-based:
 
 These must never be exposed through `VITE_*` variables. FCM server credentials and registration tokens need secure server-side handling.
 
+
+## Autofill hardening (v1.4.3)
+The checkout card fields are plain inputs (no `<form>` tag), which already limits browser card-form detection, but Chrome/Android autofill can still recognize and offer to fill them since browsers intentionally ignore `autocomplete="off"` on fields they heuristically classify as payment fields — there is no HTML-only way to fully guarantee it never appears; the CVC re-verification popup some buyers see (branded "G Pay") is the browser/OS confirming a *saved* card before autofilling it, which happens before any request reaches this app, and is unrelated to this checkout's own validation.
+This build adds real mitigations:
+- A hidden honeypot input with `autoComplete="cc-number"` placed before the real card-number field, to attract the browser's autofill target away from the visible field.
+- Per-session randomized `name` attributes on the card/expiry/CVV inputs (`fieldTagRef`), so autofill can't build a stable learned association with this form across visits.
+- Autofill-fill detection: each field's `onChange` checks `event.nativeEvent.inputType`. Browser/OS autofill inserts values with `insertReplacementText`; normal typing and manual paste do not. Any detected autofill insert is rejected (the field snaps back and a message asks for manual entry) instead of being accepted.
+- Card number auto-formats into groups of 4 digits while typing/pasting, for readability; digits-only value is still what's sent to checkout.
+None of this can stop the browser from *offering* the suggestion chip/verification dialog in the first place — that part is controlled by the user's own Chrome "Save and fill payment methods" setting — but it prevents an autofilled value from ever being accepted into the form even if a buyer taps the suggestion.
