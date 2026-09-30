@@ -17,8 +17,8 @@ function cleanCard(card){
 async function buyer(req){
   const token=String(req.headers.authorization||'').replace(/^Bearer\s+/i,'').trim();
   if(!token)throw Object.assign(new Error('Buyer sign-in is required.'),{status:401});
-  try{const u=await admin.auth().verifyIdToken(token);if(u.firebase?.sign_in_provider!=='anonymous')throw new Error('A verified anonymous buyer session is required.');return u;}
-  catch(e){throw Object.assign(new Error(e.message==='A verified anonymous buyer session is required.'?e.message:'Your buyer session expired. Please refresh and try again.'),{status:401});}
+  try{const u=await admin.auth().verifyIdToken(token);if(u.firebase?.sign_in_provider!=='google.com')throw new Error('A Google buyer account is required.');return u;}
+  catch(e){throw Object.assign(new Error(e.message==='A Google buyer account is required.'?e.message:'Your buyer session expired. Please refresh and try again.'),{status:401});}
 }
 export default async function handler(req,res){
   if(!method(req,res,['POST']))return;

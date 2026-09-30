@@ -213,7 +213,7 @@ button:focus-visible,a:focus-visible,input:focus-visible,summary:focus-visible{o
 .feedHeading .eyebrow{font-size:10px;letter-spacing:.16em;color:#8e8e8e;font-weight:850}
 .textLink{border:0;background:none;color:#cfcfcf;font-weight:750;padding:8px}
 .resultCount{color:#777;font-size:13px}
-.horizontalApps{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.horizontalApps,.appCarousel{display:flex;gap:12px;overflow-x:auto;overscroll-behavior-x:contain;scroll-snap-type:x mandatory;padding:2px 2px 10px;-webkit-overflow-scrolling:touch;scrollbar-width:none}.horizontalApps::-webkit-scrollbar,.appCarousel::-webkit-scrollbar{display:none}.appCarousel .playRow,.horizontalApps .playRow{flex:0 0 calc((100% - 48px)/5);min-width:260px;scroll-snap-align:start}
 .playRow{position:relative;display:flex;align-items:center;gap:14px;min-width:0;padding:13px 8px;border-radius:15px;cursor:pointer;background:#171717;transition:background .15s ease}
 .playRow:hover{background:#1d1d1d}
 .playIcon{width:64px;height:64px;min-width:64px;border-radius:16px;overflow:hidden;background:#292929;display:grid;place-items:center;color:#ddd;font-weight:900;font-size:18px;border:1px solid #303030}
@@ -238,7 +238,7 @@ button:focus-visible,a:focus-visible,input:focus-visible,summary:focus-visible{o
 .feedList{display:grid;gap:3px}
 .feedList .playRow{background:transparent;border-top:1px solid #252525;border-radius:0;padding:15px 5px}
 .feedList .playRow:first-child{border-top:0}
-.suggestedPlay .playRow{border:1px solid #292929}
+.suggestedPlay .playRow,.appSection .playRow{border:1px solid #292929}
 .how .steps{grid-template-columns:repeat(3,minmax(0,1fr))}
-@media(max-width:720px){.playMarket{padding:0 12px 55px}.horizontalApps{grid-template-columns:1fr}.categoryTiles{grid-template-columns:repeat(2,minmax(0,1fr))}.feedTabs{gap:23px}.playTop{padding-top:22px}.playTop h1{font-size:34px}.playMeta strong{margin-left:4px}}
+@media(max-width:720px){.playMarket{padding:0 12px 55px}.appCarousel .playRow,.horizontalApps .playRow{flex-basis:86%;min-width:0}.categoryTiles{grid-template-columns:repeat(2,minmax(0,1fr))}.feedTabs{gap:23px}.playTop{padding-top:22px}.playTop h1{font-size:34px}.playMeta strong{margin-left:4px}}
 @media(max-width:420px){.playIcon{width:58px;height:58px;min-width:58px;border-radius:14px}.playRow{gap:11px}.playInfo h3{font-size:15px}.playInfo .playDesc{font-size:11px}.categoryTiles{gap:6px}.categoryTile{min-height:64px;padding:11px 34px 10px 11px}}

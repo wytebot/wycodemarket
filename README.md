@@ -49,3 +49,9 @@ This project is intentionally consolidated to one `/api/index.js` Vercel Functio
 - Install Command: `npm install --no-audit --no-fund`
 - Do not put this project inside a `market/` subfolder in the Vercel Root Directory.
 - The API is intentionally a single catch-all Function at `api/[...route].js`; route implementations live under `server/` and are not separate Vercel Functions.
+
+## Environment variables
+See `.env.example`. Flutterwave credentials are server-side only. Configure `FLW_WEBHOOK_SECRET` with the secret hash already used by the Wytelab Flutterwave merchant webhook. The WyCode Market webhook endpoint is `/api/webhook`.
+
+## Payment verification
+WyCode records an order before charging, uses Flutterwave v4 idempotency, verifies charge status/amount/currency/reference before granting access, validates the Flutterwave webhook HMAC signature, records webhook events for idempotency, and keeps a direct verification fallback for pending payments.

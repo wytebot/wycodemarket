@@ -14,7 +14,7 @@ function authHeader(req){const h=String(req.headers.authorization||'');return h.
 async function user(req){
   getDb();
   const token=authHeader(req); if(!token) throw Object.assign(new Error('Sign in is required.'),{status:401});
-  try{return await admin.auth().verifyIdToken(token)}catch{throw Object.assign(new Error('Your sign-in session expired. Sign in again.'),{status:401})}
+  try{const decoded=await admin.auth().verifyIdToken(token);if(decoded.firebase?.sign_in_provider!=='google.com')throw Object.assign(new Error('Use your Google account to access Developer Studio.'),{status:403});return decoded}catch(e){if(e.status)throw e;throw Object.assign(new Error('Your sign-in session expired. Sign in again.'),{status:401})}
 }
 function profileDefaults(decoded){
   const now=admin.firestore.Timestamp.now();

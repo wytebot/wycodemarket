@@ -18,7 +18,7 @@ import flutterwaveHealth from '../server/flutterwave-health.js';
 const routes = {products,search,reviews,report,checkout,verify,authorize,download,seller,notifications,webhook,audit,health,'flutterwave-health':flutterwaveHealth};
 
 export default async function handler(req,res) {
-  const q = req.query?.route;
+  const q = req.query?.route ?? req.query?.path;
   const fromQuery = Array.isArray(q) ? q.join('/') : String(q || '');
   const fromUrl = String(req.url || '').split('?')[0].replace(/^\/+|\/+$/g,'').split('/').slice(1).join('/');
   const route = (fromQuery || fromUrl).replace(/^api\//,'').replace(/^\/+|\/+$/g,'').split('/')[0];
