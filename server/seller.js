@@ -176,7 +176,7 @@ async function publish(db,ref,p,b,decoded){
     tx.set(ref,update,{merge:true});
     tx.create(db.collection('products').doc(productId),{
       sellerUid:decoded.uid,sellerName:cur.displayName||decoded.email||'Developer',name,slug:`${slugify(name)}-${productId.slice(0,6)}`,description,category,
-      version:clean(b.version,30),features:clean(b.features,3000),requirements:clean(b.requirements,2000),license:clean(b.license,160)||'Single-project source license',
+      version:clean(b.version,30),repoUrl:clean(b.repoUrl,2000),features:clean(b.features,3000),requirements:clean(b.requirements,2000),license:clean(b.license,160)||'Single-project source license',
       priceUSD:usd,priceNGN:0,price:usd,currency:'USD',
       sourceUrl:source.sourceUrl,sourceDriveId:source.sourceDriveId,sellerReviewsFolderId,demoUrl,coverUrl,screenshots:Array.isArray(b.screenshots)?b.screenshots.slice(0,6).map(x=>clean(x,2000)) : [],
       contactEmail:clean(b.contactEmail,320),contactWhatsApp:clean(b.contactWhatsApp,40),status:'published',sales:0,ratingAverage:0,ratingCount:0,
