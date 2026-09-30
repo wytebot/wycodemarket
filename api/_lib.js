@@ -255,7 +255,41 @@ export async function markPaid(orderId, charge, options={}) {
   await ref.set({status:'paid',paidAt:alreadyPaid?(order.paidAt||admin.firestore.FieldValue.serverTimestamp()):admin.firestore.FieldValue.serverTimestamp(),reference:charge.reference||order.reference||'',flutterwaveChargeId:charge.id||order.flutterwaveChargeId||'',flutterwaveReference:charge.flutterwaveReference||charge.flw_ref||charge.reference||order.flutterwaveReference||order.reference||'',flutterwaveStatus:charge.status||order.flutterwaveStatus||'',verifiedAmount:Number(charge.amount),verifiedCurrency:charge.currency,updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});
   if(!alreadyPaid && order.productId){
     await db.collection('products').doc(String(order.productId)).set({sales:admin.firestore.FieldValue.increment(1),updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true}).catch(()=>{});
+    if(order.sellerUid){
+      const currency=String(order.currency||'USD').toUpperCase();
+      const field=currency==='NGN'?'balanceNGN':'balanceUSD';
+      await db.collection('sellers').doc(String(order.sellerUid)).set({
+        [field]:admin.firestore.FieldValue.increment(Number(order.amount)||0),
+        updatedAt:admin.firestore.FieldValue.serverTimestamp()
+      },{merge:true}).catch(()=>{});
+    }
   }
+  if(!alreadyPaid && order.sellerUid) await releaseThresholdPayouts(String(order.sellerUid)).catch(()=>null);
   const receiptStatus=order.receiptStatus||'not_sent';
   return {ref,receiptStatus};
+}
+
+export async function releaseThresholdPayouts(sellerUid) {
+  const db=getDb(), sellerRef=db.collection('sellers').doc(String(sellerUid)), snap=await sellerRef.get();
+  if(!snap.exists) return {released:0};
+  const p=snap.data()||{}, bank=p.payoutBank||{};
+  if(p.banned||!bank.bankCode||!bank.accountNumber||!bank.bankName||!bank.accountName) return {released:0,reason:p.banned?'banned':'bank_details_missing'};
+  const balance=Number(p.balanceUSD||0), blocks=Math.floor(balance/50), amount=blocks*50;
+  if(!Number.isFinite(amount)||amount<50) return {released:0};
+  const reference=`WYA${crypto.randomUUID().replaceAll('-','').slice(0,27)}`;
+  await db.runTransaction(async tx=>{
+    const s=await tx.get(sellerRef),cur=s.data()||{},bal=Number(cur.balanceUSD||0),n=Math.floor(bal/50)*50;
+    if(cur.banned||n<50)return;
+    tx.update(sellerRef,{balanceUSD:bal-n,withdrawnUSD:admin.firestore.FieldValue.increment(n),updatedAt:admin.firestore.FieldValue.serverTimestamp()});
+    tx.create(db.collection('payouts').doc(reference),{uid:String(sellerUid),amount:n,currency:'USD',bankCode:String(bank.bankCode),bankName:String(bank.bankName),accountNumberMasked:`****${String(bank.accountNumber).slice(-4)}`,accountName:String(bank.accountName),status:'pending',automatic:true,threshold:50,reference,createdAt:admin.firestore.FieldValue.serverTimestamp()});
+  });
+  try {
+    const r=await flwRequest('/direct-transfers',{method:'POST',headers:{'X-Idempotency-Key':reference,'X-Trace-Id':crypto.randomUUID()},body:JSON.stringify({action:'instant',type:'bank',reference,narration:'WyCode seller threshold payout',payment_instruction:{amount:{value:amount,applies_to:'destination_currency'},source_currency:'USD',destination_currency:'USD',recipient:{bank_code:String(bank.bankCode),account_number:String(bank.accountNumber),account_name:String(bank.accountName)}}})});
+    await db.collection('payouts').doc(reference).set({status:r.data?.status||'submitted',providerId:r.data?.id||'',provider:r.data||{},updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});
+    return {released:amount,status:r.data?.status||'submitted',reference};
+  } catch(e) {
+    await db.runTransaction(async tx=>{const s=await tx.get(sellerRef);if(s.exists)tx.update(sellerRef,{balanceUSD:admin.firestore.FieldValue.increment(amount),withdrawnUSD:admin.firestore.FieldValue.increment(-amount),updatedAt:admin.firestore.FieldValue.serverTimestamp()});});
+    await db.collection('payouts').doc(reference).set({status:'failed',error:String(e.message||'Transfer failed').slice(0,700),updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});
+    return {released:0,status:'failed',reference,error:e.message};
+  }
 }

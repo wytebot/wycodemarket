@@ -1,156 +1,39 @@
-# WyCode Market v1.4.3
+# WyCode Market
 
-Private source-code marketplace designed for Vercel. The public catalog reads products from Firestore (the same collection used by WyCode Studio). Paid source files remain private in Google Drive.
+Mobile-first source-code marketplace with the seller Studio inside the Market menu.
 
-## Flow
-1. Customer selects an active product and enters checkout details.
-2. Backend creates an order and starts a Flutterwave v4 Orchestrator direct charge.
-3. Card fields are encrypted with AES-256-GCM before they are sent to Flutterwave; WyCode does not persist card details.
-4. Customer follows the Flutterwave authorization/redirect step when one is returned.
-5. Flutterwave webhook is verified against the raw request body and the charge is re-queried before an order is marked paid.
-6. Customer return page also re-queries the charge as a backup.
-7. A short-lived HMAC download token is issued only for a verified paid order.
-8. `/api/download` validates the token, checks the Drive file is inside the configured private folder (including nested subfolders), then streams the file through the server. No raw Drive URL is exposed.
+## Seller storage
+Sellers submit a Google Drive file URL or file ID. The source archive is not uploaded to WyCode storage. Public product responses deliberately exclude the source URL/file ID; only a verified purchase token can reach `/api/download`, which redirects to the seller-owned Drive file.
 
-## Environment variables
-Set these in Vercel. Never put these secrets in `VITE_*` variables.
+Each seller also supplies a Drive folder ID for review JSON. The configured Google service account must have access to that folder.
 
-### Flutterwave v4
-- `FLW_CLIENT_ID` — Flutterwave v4 client ID.
-- `FLW_CLIENT_SECRET` — Flutterwave v4 client secret.
-- `FLW_ENCRYPTION_KEY` — Flutterwave card-encryption key. It must decode from base64 to exactly 32 bytes for AES-256-GCM.
-- `FLW_WEBHOOK_SECRET` — webhook secret hash configured in Flutterwave.
-- `FLW_ENVIRONMENT` — `sandbox` while testing, `production` for live.
+## Plans
+- Free: up to 5 listings during the first 30 days after first publishing; $10-$30 price range.
+- Pro: $10/month or $99/year; 10 listings per 30-day period; $10-$100 range; visibility and Studio access.
+- Pro+: $20/month or $120/year; 20 listings per 30-day period; $10-$200 range; visibility and Studio access.
+- The first 10 seller accounts receive suggested placement.
 
-### App
-- `APP_URL` — deployed Market URL, e.g. `https://market.example.com`.
-- `DOWNLOAD_TOKEN_SECRET` — random 32+ character secret used to sign 15-minute download tokens.
+Free sellers can still enter Studio and manage their initial five-listing period; paid tiers add visibility and higher limits.
 
-### Google Drive
-- `GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON` — entire Google service-account JSON. Share the private source folder with its `client_email`.
-- `GOOGLE_DRIVE_FOLDER_ID` — private Drive folder ID.
+## Moderation and appeals
+One authenticated buyer account can report a seller account once. Reasons are stored for review, but only the number of unique reports determines the automatic threshold. At 50 reports, the seller is permanently banned, published products are removed from the public catalog, the seller balance is preserved, and withdrawals are locked.
 
-### Firebase Admin / Firestore
-- `FIREBASE_SERVICE_ACCOUNT_JSON` — optional separate Firebase Admin credential. If omitted, the Drive service-account JSON is reused. The selected service account must have Firestore access.
+A banned seller can submit exactly one appeal. The Admin app can approve or reject it. Approval restores the seller and the previous product status; rejection leaves the ban in place and disables further appeals. Appeal decisions queue Gmail messages and send an FCM notification when the seller has enabled notifications.
 
-## Firestore
-WyCode Studio creates documents in `products`. Market expects:
-`name`, `description`, `status` (`active` or `published`), `price`, `currency`, `category`, `version`, `demoUrl`, `coverUrl`, `requirements`, `license`, and `driveFileId`. Optional rating fields are `ratingAverage`, `ratingCount`, and `ratingSum`. Verified buyers can submit a star rating and written review through the Market. Review JSON files are stored in Google Drive; aggregate rating fields remain in Firestore for fast catalog display.
+## Marketplace
+Admin-only Special Sales labels appear as a `SPECIAL SALES` category and product sticker. Sellers cannot control this label from Studio.
 
-Orders are written by the server into `orders`.
+## Payments
+Buyer payments and seller-plan payments are verified server-side with Flutterwave v4. Sellers retain the listed sale amount in the marketplace ledger. Payout requests use Flutterwave transfer capability and record the provider's actual status.
 
-## Flutterwave configuration diagnostic
-
-After deployment, open `/api/flutterwave-health?mode=flutterwave` to verify the server is actually receiving the Vercel Production v4 credentials. The same endpoint without the query parameter returns the basic Market health response. The endpoint never returns the Client Secret; it reports only whether each credential is configured, lengths, and non-reversible fingerprints. A successful response means the OAuth client credentials were accepted by Flutterwave.
-
-If it returns HTTP 401, the failure occurs before Firestore or card processing: Flutterwave rejected the OAuth client credentials. Replace the Production Client ID and Production Client Secret together if they were rotated/revoked.
-
-## Flutterwave webhook
-Configure this endpoint in the Flutterwave dashboard:
-`https://YOUR-MARKET-DOMAIN/api/webhook`
-
-Set the same random webhook secret in `FLW_WEBHOOK_SECRET`. The endpoint verifies the exact raw request bytes with HMAC-SHA256 and then re-queries the charge before delivering value. Flutterwave recommends both signature verification and re-querying critical transaction data.
-
-## Product ratings
-Ratings use the existing Firestore database rather than Google Drive because ratings are structured records, not files. A rating is accepted only when the submitted order exists, is marked paid, and belongs to the product. One review claim is kept per successful order, so a purchase can have exactly one review. The buyer can edit that same review later without increasing the rating count; a separate successful purchase gets its own review entitlement. No new storage provider or environment variable is required.
-
-## Google Drive delivery
-The server uses the Drive API to retrieve private blob content with `files.get` + `alt=media`, after checking download capability and the configured folder ancestry.
-
-## Important payment note
-This build uses Flutterwave v4 OAuth 2.0 and the v4 Orchestrator/direct-charge flow. Flutterwave's current v4 card documentation requires card fields to be encrypted with AES-256 and sent as encrypted fields, so `FLW_ENCRYPTION_KEY` is now required for card checkout.
-
-Do not log or persist card numbers, CVV, expiry values, or decrypted card payloads. Complete any payment/compliance requirements applicable to your Flutterwave account before going live.
-
-## Security
-- Flutterwave client secret and encryption key stay server-side.
-- Drive credentials stay server-side.
-- Raw Drive URLs are never returned to buyers.
-- Download links are HMAC-signed and expire after 15 minutes.
-- Download endpoint verifies order payment state and Drive folder ancestry.
-- Webhook signature is checked against the raw request body.
-- Webhook and return verification re-query the Flutterwave charge before marking an order paid.
-- Flutterwave idempotency keys use the required alphanumeric format.
-
-## Deploy
-Install dependencies and run `npm run build`, then deploy to Vercel. The `api/*.js` files become Vercel serverless functions.
-
-### Vercel variables to restore
-Add the following as **Server-only** Vercel environment variables for the environments you use (Preview/Production as appropriate):
-
-```text
-FLW_CLIENT_ID
-FLW_CLIENT_SECRET
-FLW_ENCRYPTION_KEY
-FLW_WEBHOOK_SECRET
-FLW_ENVIRONMENT
-APP_URL
-DOWNLOAD_TOKEN_SECRET
-GOOGLE_DRIVE_SERVICE_ACCOUNT_JSON
-GOOGLE_DRIVE_FOLDER_ID
-FIREBASE_SERVICE_ACCOUNT_JSON   # optional if reusing the Drive service account
-```
-
-Never paste the actual secret values into chat or commit them to Git.
+## Environment
+See `.env.example`. Never put server secrets in Vite/client variables. `VITE_FIREBASE_VAPID_KEY` is public.
 
 
-## Production smoke test
-Verify legal accordions, outside-touch/Escape dismissal, invalid-input alerts, a completed purchase, and that the product sales count and Top Sales ranking update only after payment verification.
-
-
-
-
-
-
-## Buyer reviews
-The Market now has a dedicated Reviews page. Buyers receive an anonymous Firebase identity and submit reviews only for paid orders. After a successful purchase, a durable review entitlement is created server-side so the buyer can review later even after the short-lived download token expires. Each successful order gets exactly one review claim; the buyer can edit that review later, but cannot create a second review for the same order. If the same product is purchased again, that new order receives its own review entitlement. Reviews are stored as individual JSON files in Google Drive under `GOOGLE_DRIVE_REVIEWS_FOLDER_ID`; if that variable is blank, the server creates a `WyCode Reviews` subfolder under `GOOGLE_DRIVE_FOLDER_ID`. The Drive service account therefore needs write access to the configured parent/reviews folder. Enable **Anonymous** sign-in in Firebase Authentication and use the hardcoded Firebase Web App configuration in `src/main.jsx`. The anonymous identity is not displayed publicly; review records retain an anonymous reviewer UID plus the verified order ID for abuse control.
-
-
-## Buyer push notifications (FCM)
-
-The Market includes opt-in Firebase Cloud Messaging (FCM) Web Push. Buyers can tap **Get notified** to receive a browser notification whenever a new product is published from WyCode Studio.
-
-The Firebase Web App configuration is intentionally hardcoded in `src/main.jsx` and the generated service worker because this Market uses the same single-owner Firebase project as WyCode Studio. **No Firebase client-side environment variables are required.** The config values are public Firebase app identifiers; Firebase recommends protecting Firestore and other data with Security Rules rather than treating the client config as a secret.
-
-The Market also uses that same hardcoded API key for the anonymous Firebase identity used by verified reviews.
-
-### Client configuration
-
-No `VITE_FIREBASE_*` variables are required. The following public Firebase Web App values are embedded in the source:
-
-- `apiKey`
-- `authDomain`
-- `projectId`
-- `storageBucket`
-- `messagingSenderId`
-- `appId`
-- `measurementId`
-
-### Web Push / VAPID
-
-`getToken()` cannot create a browser push subscription without a VAPID public key — this was previously omitted, which is why **Get notified** failed for every buyer (no token was ever generated, so nothing ever reached the `notificationSubscribers` collection and Studio had 0 subscribers to send to). This is now fixed in code; you just need to supply the key:
-
-1. Open **Firebase Console → Project Settings → Cloud Messaging → Web Push certificates** for the `wycoder` project.
-2. If no key pair exists yet, click **Generate key pair**. Copy the public key string shown.
-3. The key is public (not a secret). Either:
-   - paste it in place of `FCM_VAPID_KEY`'s placeholder value in `src/main.jsx` (same pattern as the hardcoded `firebaseConfig` above it), or
-   - set it as a Vercel environment variable named `VITE_FIREBASE_VAPID_KEY` (available at build time to Vite) — the code prefers this if present.
-4. Redeploy. Until a real key is set, the app fails fast with a clear "Push notifications are not fully configured yet (missing VAPID key)" message instead of a silent/cryptic Firebase error.
-
-### Server-side environment variables
-
-Only server-side credentials remain environment-based:
-
-- `FIREBASE_SERVICE_ACCOUNT_JSON` — private Firebase Admin service-account JSON used by the notification API.
-
-These must never be exposed through `VITE_*` variables. FCM server credentials and registration tokens need secure server-side handling.
-
-
-## Autofill hardening (v1.4.3)
-The checkout card fields are plain inputs (no `<form>` tag), which already limits browser card-form detection, but Chrome/Android autofill can still recognize and offer to fill them since browsers intentionally ignore `autocomplete="off"` on fields they heuristically classify as payment fields — there is no HTML-only way to fully guarantee it never appears; the CVC re-verification popup some buyers see (branded "G Pay") is the browser/OS confirming a *saved* card before autofilling it, which happens before any request reaches this app, and is unrelated to this checkout's own validation.
-This build adds real mitigations:
-- A hidden honeypot input with `autoComplete="cc-number"` placed before the real card-number field, to attract the browser's autofill target away from the visible field.
-- Per-session randomized `name` attributes on the card/expiry/CVV inputs (`fieldTagRef`), so autofill can't build a stable learned association with this form across visits.
-- Autofill-fill detection: each field's `onChange` checks `event.nativeEvent.inputType`. Browser/OS autofill inserts values with `insertReplacementText`; normal typing and manual paste do not. Any detected autofill insert is rejected (the field snaps back and a message asks for manual entry) instead of being accepted.
-- Card number auto-formats into groups of 4 digits while typing/pasting, for readability; digits-only value is still what's sent to checkout.
-None of this can stop the browser from *offering* the suggestion chip/verification dialog in the first place — that part is controlled by the user's own Chrome "Save and fill payment methods" setting — but it prevents an autofilled value from ever being accepted into the form even if a buyer taps the suggestion.
+## Hardened marketplace flow
+- Buyers use Firebase Anonymous Auth; completed orders are bound to the anonymous UID.
+- Checkout, payment verification, authorization and download require that buyer UID.
+- Only a verified buyer of the exact product can submit one review per product and one seller report per seller.
+- Seller balances are credited only after server-side Flutterwave verification.
+- Automatic seller payouts release USD balance in $50 thresholds when valid bank details exist; provider status is recorded as submitted/pending/failed.
+- Seller source archives remain in seller-controlled Google Drive. Static code audits read the ZIP and store only audit metadata/errors.
