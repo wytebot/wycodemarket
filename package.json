@@ -8,7 +8,7 @@
   },
   "scripts": {
     "dev": "vite",
-    "build": "npm install --no-audit --no-fund && vite build",
+    "build": "vite build",
     "preview": "vite preview",
     "prebuild": "node scripts/generate-fcm-sw.mjs",
     "predev": "node scripts/generate-fcm-sw.mjs"
