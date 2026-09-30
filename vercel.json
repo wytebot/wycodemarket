@@ -1,7 +1,7 @@
 {
   "rewrites": [
     {
-      "source": "/((?!api/|icon\\.svg|favicon).*)",
+      "source": "/((?!api(?:/|$)|icon\\.svg|favicon).*)",
       "destination": "/index.html"
     }
   ],
@@ -25,5 +25,8 @@
     }
   ],
   "installCommand": "npm install --no-audit --no-fund",
-  "buildCommand": "npm run build"
+  "buildCommand": "npm run build",
+  "version": 2,
+  "framework": "vite",
+  "outputDirectory": "dist"
 }

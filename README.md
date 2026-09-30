@@ -37,3 +37,15 @@ See `.env.example`. Never put server secrets in Vite/client variables. `VITE_FIR
 - Seller balances are credited only after server-side Flutterwave verification.
 - Automatic seller payouts release USD balance in $50 thresholds when valid bank details exist; provider status is recorded as submitted/pending/failed.
 - Seller source archives remain in seller-controlled Google Drive. Static code audits read the ZIP and store only audit metadata/errors.
+
+## Vercel deployment
+This project is intentionally consolidated to one `/api/index.js` Vercel Function so it stays within Vercel Hobby's function-count limit while preserving `/api/products`, `/api/seller`, `/api/checkout`, etc. through rewrites. Deploy from this directory as the Vercel Root Directory; do not set a nested root.
+
+### Vercel project settings
+- Root Directory: repository root (`./`)
+- Framework Preset: Vite
+- Build Command: `npm run build`
+- Output Directory: `dist`
+- Install Command: `npm install --no-audit --no-fund`
+- Do not put this project inside a `market/` subfolder in the Vercel Root Directory.
+- The API is intentionally a single catch-all Function at `api/[...route].js`; route implementations live under `server/` and are not separate Vercel Functions.
