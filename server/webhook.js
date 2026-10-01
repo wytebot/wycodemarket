@@ -8,7 +8,7 @@ function signatureValid(raw, headers) {
   const configured=String(process.env.FLW_WEBHOOK_SECRET||'').trim();
   if(!configured) return false;
   const secretHash=String(headers['verif-hash']||headers['Verif-Hash']||'').trim();
-  if(secretHash) return crypto.timingSafeEqual(Buffer.from(secretHash),Buffer.from(configured)) && secretHash.length===configured.length;
+  if(secretHash){const a=Buffer.from(secretHash),b=Buffer.from(configured);return a.length===b.length && crypto.timingSafeEqual(a,b);}
   const hmac=String(headers['flutterwave-signature']||headers['Flutterwave-Signature']||'').trim();
   if(!hmac) return false;
   const expected=crypto.createHmac('sha256',configured).update(raw).digest('base64');

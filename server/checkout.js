@@ -15,6 +15,7 @@ function cleanCard(card){
   return {number,cvv,month,year:year.slice(-2)};
 }
 async function buyer(req){
+  getDb(); // initialise firebase-admin before verifyIdToken (cold start would otherwise report 'session expired')
   const token=String(req.headers.authorization||'').replace(/^Bearer\s+/i,'').trim();
   if(!token)throw Object.assign(new Error('Buyer sign-in is required.'),{status:401});
   try{const u=await admin.auth().verifyIdToken(token);if(u.firebase?.sign_in_provider!=='google.com')throw new Error('A Google buyer account is required.');return u;}
@@ -29,7 +30,7 @@ export default async function handler(req,res){
     if(!['active','published'].includes(p.status))return json(res,400,{error:'Product is not available.'});
     if(!String(p.sourceDriveId||p.sourceUrl||'').trim())return json(res,409,{error:'This product is not ready for verified delivery yet.'});
     const currency=String(b.currency||'USD').toUpperCase();if(!['USD','NGN'].includes(currency))return json(res,400,{error:'Choose USD or NGN.'});const amount=currency==='NGN'?(Number(p.priceNGN)>0?Number(p.priceNGN):Math.round(Number(p.priceUSD||0)*1200)):Number(p.priceUSD);if(!Number.isFinite(amount)||amount<0.01)return json(res,400,{error:`This product does not have a valid ${currency} price.`});
-    const pendingSnap=await db.collection('orders').where('buyerUid','==',decoded.uid).limit(50).get();const pending=pendingSnap.docs.map(d=>({id:d.id,...d.data()})).find(o=>o.productId===productId&&o.status==='pending'&&(Date.now()-(new Date(o.createdAt||0).getTime()||0))<15*60*1000);if(pending&&pending.flutterwaveChargeId)return json(res,200,{orderId:pending.id,reference:pending.reference,status:pending.flutterwaveStatus||'pending',chargeId:pending.flutterwaveChargeId,nextAction:pending.nextAction||null});
+    const pendingSnap=await db.collection('orders').where('buyerUid','==',decoded.uid).limit(50).get();const pending=pendingSnap.docs.map(d=>({id:d.id,...d.data()})).find(o=>o.productId===productId&&o.status==='pending'&&(Date.now()-((o.createdAt?.toDate?o.createdAt.toDate():new Date(o.createdAt||0)).getTime()||0))<15*60*1000);if(pending&&pending.flutterwaveChargeId)return json(res,200,{orderId:pending.id,reference:pending.reference,status:pending.flutterwaveStatus||'pending',chargeId:pending.flutterwaveChargeId,nextAction:pending.nextAction||null});
     const orderId=crypto.randomUUID(),reference=`WYC${orderId.replaceAll('-','').slice(0,30)}`,card=cleanCard(paymentMethod.type==='card'?paymentMethod.card:null),encryptionKey=process.env.FLW_ENCRYPTION_KEY;if(!encryptionKey)throw new Error('Missing FLW_ENCRYPTION_KEY');
     await db.collection('orders').doc(orderId).set({productId,productName:p.name||'',sellerUid:p.sellerUid||'',buyerUid:decoded.uid,email,name,amount,currency,reference,status:'pending',createdAt:new Date()});
     const appUrl=String(process.env.APP_URL||'').trim().replace(/\/$/,'');if(!/^https:\/\/[^\s]+$/i.test(appUrl))throw new Error('APP_URL must be a valid HTTPS URL');

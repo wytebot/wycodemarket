@@ -5,7 +5,7 @@ function rank(p){const sales=Math.max(0,Number(p.sales)||0),rating=Math.max(0,Ma
 export default async function handler(req,res){
   if(!method(req,res,['GET']))return;
   try{
-    const db=getDb(),snap=await db.collection('products').get();
+    const db=getDb(),snap=await db.collection('products').where('status','in',['active','published']).get();
     const refs=[...new Map(snap.docs.map(d=>[String(d.data()?.sellerUid||''),d.data()?.sellerUid?db.collection('sellers').doc(String(d.data().sellerUid)):null]).filter(x=>x[1])).values()];
     const sellerSnaps=refs.length?await db.getAll(...refs):[];
     const sellerMap=new Map(sellerSnaps.map(d=>[d.id,d.exists?d.data()||{}:{}]));
@@ -13,8 +13,8 @@ export default async function handler(req,res){
       const p=d.data()||{},seller=sellerMap.get(String(p.sellerUid||''))||{};
       const sellerRatingAverage=Number(seller.ratingAverage??p.sellerRatingAverage??p.ratingAverage??0),sellerRatingCount=Number(seller.ratingCount??p.sellerRatingCount??0);
       const productReviewCount=Number(p.ratingCount||0);
-      return {id:d.id,name:p.name||'',slug:p.slug||d.id,description:p.description||'',category:p.category||'Other',version:p.version||'',price:Number(p.price||p.priceUSD||0),currency:'USD',priceUSD:Number(p.priceUSD||p.price||0),priceNGN:Number(p.priceNGN||Math.round(Number(p.priceUSD||p.price||0)*1200)),demoUrl:p.demoUrl||'',coverUrl:imageUrl(p.coverUrl),screenshots:Array.isArray(p.screenshots)?p.screenshots:[],sellerUid:p.sellerUid||'',sellerName:p.sellerName||seller.displayName||'Developer',sellerAvatarUrl:p.sellerAvatarUrl||seller.avatarUrl||'',sellerRatingAverage,sellerRatingCount,contactEmail:p.contactEmail||'',contactWhatsApp:p.contactWhatsApp||'',visibility:Boolean(p.visibility),suggested:true,special:Boolean(p.special||p.saleType==='special'),features:p.features||'',requirements:p.requirements||'',license:p.license||'Single-project source license',sales:Number(p.sales||0),ratingAverage:sellerRatingAverage,ratingCount:productReviewCount,rankScore:rank({...p,sellerRatingAverage,ratingCount:productReviewCount}),uploadedAtISO:toISO(p.createdAt||p.uploadedAt||p.publishedAt)};
-    }).filter(p=>p.name&&p.rankScore!==undefined&&['active','published'].includes((snap.docs.find(d=>d.id===p.id)?.data()||{}).status));
+      return {id:d.id,name:p.name||'',slug:p.slug||d.id,description:p.description||'',category:p.category||'Other',version:p.version||'',price:Number(p.price||p.priceUSD||0),currency:'USD',priceUSD:Number(p.priceUSD||p.price||0),priceNGN:Number(p.priceNGN||Math.round(Number(p.priceUSD||p.price||0)*1200)),demoUrl:p.demoUrl||'',coverUrl:imageUrl(p.coverUrl),screenshots:Array.isArray(p.screenshots)?p.screenshots:[],sellerUid:p.sellerUid||'',sellerName:p.sellerName||seller.displayName||'Developer',sellerAvatarUrl:p.sellerAvatarUrl||seller.avatarUrl||'',sellerRatingAverage,sellerRatingCount,contactEmail:p.contactEmail||'',contactWhatsApp:p.contactWhatsApp||'',visibility:Boolean(p.visibility),suggested:Boolean((p.suggested===true&&p.codeAudit?.status==='passed')||p.founderSuggested===true),special:Boolean(p.special||p.saleType==='special'),features:p.features||'',requirements:p.requirements||'',license:p.license||'Single-project source license',sales:Number(p.sales||0),ratingAverage:sellerRatingAverage,ratingCount:productReviewCount,rankScore:rank({...p,sellerRatingAverage,ratingCount:productReviewCount}),uploadedAtISO:toISO(p.createdAt||p.uploadedAt||p.publishedAt)};
+    }).filter(p=>p.name);
     products.sort((a,b)=>b.rankScore-a.rankScore||b.sales-a.sales||b.sellerRatingAverage-a.sellerRatingAverage);
     return json(res,200,{products});
   }catch(e){return json(res,500,{error:'Unable to load products right now.'});}
