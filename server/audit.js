@@ -24,9 +24,8 @@ async function auth(req){
  const t=String(req.headers.authorization||'').replace(/^Bearer\s+/i,'').trim();
  if(!t)throw Object.assign(new Error('Authentication is required.'),{status:401});
  const db=getDb();let u;try{u=await admin.auth().verifyIdToken(t)}catch{throw Object.assign(new Error('Your session expired.'),{status:401})}
- const ADMIN_EMAIL='ilemobayotolulope11092003@gmail.com';
  const adminIds=String(process.env.ADMIN_UIDS||'').split(',').map(x=>x.trim()).filter(Boolean);
- if(String(u.email||'').toLowerCase()===ADMIN_EMAIL||adminIds.includes(u.uid))return {uid:u.uid,admin:true};
+ if(adminIds.includes(u.uid))return {uid:u.uid,admin:true};
  return {uid:u.uid,admin:false};
 }
 export default async function handler(req,res){if(!method(req,res,['POST']))return;try{const u=await auth(req),b=req.body&&typeof req.body==='object'?req.body:{},id=clean(b.productId,120);if(!id)return json(res,400,{error:'Product is required.'});const snap=await getDb().collection('products').doc(id).get();if(!snap.exists)return json(res,404,{error:'Product not found.'});if(!u.admin&&String(snap.data()?.sellerUid)!==String(u.uid))return json(res,403,{error:'You can only audit your own product.'});const r=await auditProduct(id,{notify:Boolean(b.notify)});return json(res,200,{ok:true,audit:r});}catch(e){json(res,e.status&&e.status<500?e.status:500,{error:e.message||'Audit failed.'});}}

@@ -248,4 +248,5 @@ button:focus-visible,a:focus-visible,input:focus-visible,summary:focus-visible{o
 
 .reportReasons{display:grid;gap:8px;margin-top:12px}.reportReasons .full{width:100%;text-align:left}.reviewEditNote{font-size:11px;color:#aaa;margin-bottom:6px}.storeRating{margin-top:9px;color:#999;font-size:12px}.storeRating b{color:#eee}.storeRating .reviewStars{font-size:15px}
 
-.successModal .modalBox{max-width:420px}.studioAvatarPreview{width:72px;height:72px;border-radius:50%;object-fit:cover;border:1px solid #333;margin:6px 0 10px}.sellerIcon img{width:100%;height:100%;border-radius:inherit;object-fit:cover}.bankRow{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;border-top:1px solid #292929}.bankRow:first-of-type{border-top:0}.bankRow span{display:grid;gap:3px}.bankRow small{color:#777}.inlineModal{position:fixed;z-index:60}
+.secureNote{border:1px solid #2c2c2c;background:#101010;color:#aaa;border-radius:10px;padding:10px;font-size:11px;line-height:1.45;margin-top:10px}
+.payoutBox select{min-height:46px}
