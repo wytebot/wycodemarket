@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import admin from 'firebase-admin';
-import {getDb,json,method,body,flwRequest,encryptCardField,randomNonce} from './_lib.js';
+import {getDb,json,method,rawBody,flwRequest,encryptCardField,randomNonce} from './_lib.js';
 import {auditProduct} from './audit.js';
 
 const REPORT_REASONS=new Set(['Fake or mismatched live demo','Source code does not match listing','Product is broken or unusable','Misleading product information','Other']);
@@ -295,7 +295,10 @@ export default async function handler(req,res){
       if(action==='profile')return json(res,200,{profile:toJSON({...p,uid:decoded.uid}),plan});
       return json(res,400,{error:'Unknown dashboard action.'});
     }
-    const b=await body(req),action=clean(b.action,40);
+    let b={};
+    if(req.body && typeof req.body==='object') b=req.body;
+    else { const raw=await rawBody(req); try { b=JSON.parse(raw||'{}'); } catch { throw Object.assign(new Error('Invalid JSON body.'),{status:400}); } }
+    const action=clean(b.action,40);
     if(action==='save-profile'){
       const patch={displayName:clean(b.displayName,80),bio:clean(b.bio,600),website:clean(b.website,500),publicEmail:clean(b.publicEmail,320),whatsapp:clean(b.whatsapp,40),updatedAt:admin.firestore.FieldValue.serverTimestamp()};
       await ref.set(patch,{merge:true});return json(res,200,{ok:true,profile:toJSON({...p,...patch,uid:decoded.uid})});
