@@ -55,3 +55,23 @@ See `.env.example`. Flutterwave credentials are server-side only. Configure `FLW
 
 ## Payment verification
 WyCode records an order before charging, uses Flutterwave v4 idempotency, verifies charge status/amount/currency/reference before granting access, validates the Flutterwave webhook HMAC signature, records webhook events for idempotency, and keeps a direct verification fallback for pending payments.
+
+## Publisher profile and Drive media
+- Publisher display name and picture are account-level profile data and are shown on every published product.
+- Cover images and publisher pictures are uploaded to Google Drive, not Firebase Storage. WyCode first uses the publisher's optional `mediaDriveFolderId`; otherwise it uses the parent folder of the publisher's source ZIP Drive file, then the configured `GOOGLE_DRIVE_FOLDER_ID` fallback.
+- The configured Google Drive service account must have write access to the selected media folder and the uploaded image must be accessible to marketplace buyers.
+
+## Payout accounts
+- Publishers can save multiple verified NGN and USD payout accounts.
+- If no bank exists, Studio shows only `Add banks` on the payout page.
+- During withdrawal the publisher must explicitly select the payout account to use.
+- Existing legacy single-bank fields are migrated to the new account arrays on the next Studio dashboard load.
+
+## APK/WebView notifications
+- The web build checks for Notification and Service Worker support before requesting Firebase Web Push.
+- If a native APK bridge exposes `window.WyCodeNative.requestNotifications()`, WyCode uses that bridge instead of browser notifications.
+- Unsupported WebView environments show an in-app message instead of throwing browser notification errors.
+
+## Admin access
+- The WyCode Admin backend has a hard-coded administrator email fallback: `ilemobayotolulope11092003@gmail.com`.
+- `ADMIN_UIDS` remains supported as an additional server-side allowlist.
