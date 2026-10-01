@@ -252,3 +252,35 @@ button:focus-visible,a:focus-visible,input:focus-visible,summary:focus-visible{o
 .payoutBox select{min-height:46px}
 .profilePicturePicker{display:flex;align-items:center;gap:14px;padding:12px;border:1px solid rgba(255,255,255,.08);border-radius:16px;margin-bottom:16px;background:rgba(255,255,255,.02)}
 .profilePicturePreview{width:72px;height:72px;border-radius:50%;overflow:hidden;display:grid;place-items:center;background:#20252d;border:1px solid rgba(255,255,255,.1);font-size:28px;font-weight:800;flex:0 0 auto}.profilePicturePreview img{width:100%;height:100%;object-fit:cover}.profilePicturePicker small{display:block;color:#8d96a3;margin:5px 0 8px;line-height:1.4}.sellerAvatarButton{overflow:hidden;padding:0}.sellerAvatarButton img{width:100%;height:100%;object-fit:cover;display:block}.savedBanks{display:grid;gap:8px;margin:8px 0 14px}.savedBank{display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid rgba(255,255,255,.08);border-radius:12px;cursor:pointer}.savedBank input{width:18px;height:18px;accent-color:currentColor}.savedBank span{display:grid;gap:3px}.savedBank small{color:#8d96a3}.headerActions{display:flex;gap:8px;align-items:center}
+
+/* ---- simplified payouts ---- */
+.payoutPanel{display:grid;gap:12px}
+.payoutPanel h2{margin:0}
+.payoutStep{margin:6px 0 0;font-size:13px;letter-spacing:.04em;color:#aaa;text-transform:uppercase}
+.balanceRow{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.balanceCard{background:#101010;border:1px solid #2b2b2b;border-radius:14px;padding:13px;display:grid;gap:6px}
+.balanceCard span{font-size:11px;color:#888}.balanceCard b{font-size:21px}.balanceCard small{font-size:11px;color:#888;line-height:1.35}
+.bar{height:5px;border-radius:99px;background:#262626;overflow:hidden}.bar i{display:block;height:100%;background:#d9f99d;border-radius:99px}
+.acctList{display:grid;gap:8px}
+.acct{display:flex;align-items:center;gap:10px;padding:12px;border:1px solid #2f2f2f;border-radius:12px;background:#101010;cursor:pointer}
+.acct.on{border-color:#d9f99d;background:#161a10}
+.radioDot{flex:0 0 18px;height:18px;border-radius:50%;border:2px solid #555;display:grid;place-items:center}
+.acct.on .radioDot{border-color:#d9f99d}.acct.on .radioDot:after{content:"";width:8px;height:8px;border-radius:50%;background:#d9f99d}
+.acctInfo{flex:1;min-width:0;display:grid;gap:2px}.acctInfo b{font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.acctInfo small{color:#888;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.acct em{font-style:normal;font-size:10px;font-weight:800;padding:2px 7px;border-radius:99px;background:#232323;color:#bbb}
+.linkBtn{background:none;border:0;padding:4px 6px;color:#9aa4b2;font-size:12px;text-decoration:underline;cursor:pointer;width:auto;min-width:0}
+.full{width:100%}
+.addAcct{display:grid;gap:10px;padding:12px;border:1px solid #2b2b2b;border-radius:14px;background:#101010}
+.seg{display:grid;grid-template-columns:1fr 1fr;gap:6px}.seg button{padding:10px 8px;font-size:13px;background:#181818;color:#bbb;border:1px solid #2f2f2f;border-radius:10px}.seg button.active{background:#f1f1f1;color:#0b0b0b;border-color:#f1f1f1}
+.bankPicker{position:relative;display:grid;gap:6px}
+.bankList{max-height:220px;overflow:auto;border:1px solid #2f2f2f;border-radius:10px;background:#0c0c0c;display:grid}
+.bankList button{background:transparent;color:#ddd;text-align:left;border:0;border-bottom:1px solid #1d1d1d;border-radius:0;padding:11px 12px;font-size:14px;font-weight:500}
+.bankList button:hover,.bankList button:focus{background:#1b1b1b}
+.bankList .hint{padding:10px 12px;margin:0}
+.bankChosen{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:11px 12px;border:1px solid #d9f99d;border-radius:10px;background:#161a10}
+.verified{margin:0;color:#b9f3cf;font-weight:700;font-size:13px}
+.moreDetails summary{cursor:pointer;color:#9aa4b2;font-size:13px;margin-bottom:8px}.moreDetails{display:grid;gap:8px}
+.addActions{display:flex;gap:8px;flex-wrap:wrap}.addActions .pay{flex:1}
+.payoutHistory{display:grid;gap:6px}.payoutHistory>div{display:flex;gap:10px;align-items:center;padding:9px 11px;border:1px solid #262626;border-radius:10px;background:#101010;font-size:13px}.payoutHistory small{flex:1;color:#888;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.payoutHistory em{font-style:normal;font-size:10px;font-weight:800;text-transform:uppercase;padding:2px 7px;border-radius:99px;background:#232323;color:#bbb}.payoutHistory em.successful{background:#173d29;color:#b9f3cf}.payoutHistory em.failed{background:#4a1f24;color:#ffd9dc}
+@media(max-width:420px){.balanceRow{grid-template-columns:1fr}}
