@@ -1,8 +1,9 @@
 import crypto from 'node:crypto';
 import admin from 'firebase-admin';
-import {getDb,json,method,body,flwRequest,encryptCardField,randomNonce,releaseThresholdPayouts} from './_lib.js';
+import {getDb,json,method,body,flwRequest,encryptCardField,randomNonce} from './_lib.js';
 import {auditProduct} from './audit.js';
 
+const REPORT_REASONS=new Set(['Fake or mismatched live demo','Source code does not match listing','Product is broken or unusable','Misleading product information','Other']);
 const CATEGORIES=['Developer Tools','Productivity','Business','Creative','Utilities','Other','AI','Games','Education','Finance','New Upload'];
 const PLANS={
   free:{monthly:0,annual:0,maxListings:5,minPrice:10,maxPrice:30,studio:true,visibility:false},
@@ -68,6 +69,7 @@ function periodStart(p){
 }
 async function enforcePlan(db,ref,p){
   let current=p;
+  if(current.banned)return planFor(current);
   const now=Date.now();
   if(current.tier!=='free' && current.cancelAt){
     const cancelAt=(current.cancelAt.toDate?current.cancelAt.toDate():new Date(current.cancelAt)).getTime();
@@ -156,10 +158,8 @@ async function publish(db,ref,p,b,decoded){
   if(!source.sourceUrl)return {error:'Paste the source-code Drive URL or file ID. Your file stays in your Drive.',status:400};
   const demoUrl=clean(b.demoUrl,2000);
   const coverUrl=clean(b.coverUrl,2000);
-  const sellerReviewsFolderId=clean(b.reviewsDriveId||p.reviewsDriveId,200);
-  if(!sellerReviewsFolderId)return {error:'Add the Drive folder ID where this product’s reviews should be stored.',status:400};
   const min=plan.minPrice,max=plan.maxPrice;
-  const usd=Number(b.priceUSD);
+  const usd=Number(b.priceUSD),ngn=Math.round(usd*1200);
   if(!priceOk(usd,min,max))return {error:`Your ${plan.tier==='free'?'free':'current'} plan requires a USD product price from $${min} to $${max}.`,status:400};
   const now=admin.firestore.Timestamp.now();
   const productId=crypto.randomUUID();
@@ -176,10 +176,10 @@ async function publish(db,ref,p,b,decoded){
     tx.set(ref,update,{merge:true});
     tx.create(db.collection('products').doc(productId),{
       sellerUid:decoded.uid,sellerName:cur.displayName||decoded.email||'Developer',name,slug:`${slugify(name)}-${productId.slice(0,6)}`,description,category,
-      version:clean(b.version,30),repoUrl:clean(b.repoUrl,2000),features:clean(b.features,3000),requirements:clean(b.requirements,2000),license:clean(b.license,160)||'Single-project source license',
-      priceUSD:usd,priceNGN:0,price:usd,currency:'USD',
-      sourceUrl:source.sourceUrl,sourceDriveId:source.sourceDriveId,sellerReviewsFolderId,demoUrl,coverUrl,screenshots:Array.isArray(b.screenshots)?b.screenshots.slice(0,6).map(x=>clean(x,2000)) : [],
-      contactEmail:clean(b.contactEmail,320),contactWhatsApp:clean(b.contactWhatsApp,40),status:'published',sales:0,ratingAverage:0,ratingCount:0,
+      version:clean(b.version,30),features:clean(b.features,3000),requirements:clean(b.requirements,2000),license:clean(b.license,160)||'Single-project source license',
+      priceUSD:usd,priceNGN:ngn,price:usd,currency:'USD',
+      sourceUrl:source.sourceUrl,sourceDriveId:source.sourceDriveId,demoUrl,coverUrl,screenshots:Array.isArray(b.screenshots)?b.screenshots.slice(0,6).map(x=>clean(x,2000)) : [],
+      contactEmail:clean(b.contactEmail,320),contactWhatsApp:clean(b.contactWhatsApp,40),status:'published',sales:0,ratingAverage:0,ratingCount:0,sellerRatingAverage:Number(cur.ratingAverage||0),sellerRatingCount:Number(cur.ratingCount||0),
       founderSuggested:Boolean(cur.founderSuggested),visibility:Boolean(activePlan.visibility||cur.founderSuggested),createdAt:now,updatedAt:now
     });
   });
@@ -190,6 +190,7 @@ async function publish(db,ref,p,b,decoded){
 async function report(db,decoded,b){
   const sellerUid=clean(b.sellerUid,200),reason=clean(b.reason,120);
   if(!sellerUid||!reason)return {error:'Seller and report reason are required.',status:400};
+  if(!REPORT_REASONS.has(reason))return {error:'Choose a valid report reason.',status:400};
   if(sellerUid===decoded.uid)return {error:'You cannot report your own seller account.',status:400};
   const sellerRef=db.collection('sellers').doc(sellerUid),reportRef=db.collection('sellerReports').doc(`${sellerUid}_${decoded.uid}`);
   let count=0,banned=false;
@@ -222,42 +223,41 @@ async function submitAppeal(db,decoded,b){
   return {ok:true,appealId:appealRef.id,status:'pending'};
 }
 
+async function getBanks(){
+  const r=await flwRequest('/banks?country=NG',{method:'GET'});
+  return Array.isArray(r.data)?r.data.map(x=>({code:String(x.code||''),name:String(x.name||'')})).filter(x=>x.code&&x.name):[];
+}
+async function resolveBank(bankName,accountNumber,currency){
+  const name=clean(bankName,120),number=clean(accountNumber,40);
+  if(!name||!number)throw Object.assign(new Error('Select your bank and enter your account number.'),{status:400});
+  const banks=await getBanks(),bank=banks.find(x=>x.name.toLowerCase()===name.toLowerCase())||banks.find(x=>x.name.toLowerCase().includes(name.toLowerCase()));
+  if(!bank)throw Object.assign(new Error('That bank could not be found in Flutterwave. Refresh the bank list and try again.'),{status:400});
+  const r=await flwRequest('/banks/account-resolve',{method:'POST',body:JSON.stringify({account:{code:bank.code,number},currency:String(currency).toUpperCase()})});
+  const data=r.data||{};
+  return {bankName:bank.name,bankCode:bank.code,accountNumber:number,accountName:clean(data.account_name,120)};
+}
 async function withdraw(db,ref,p,b,decoded){
-  const amount=Number(b.amount),currency=String(b.currency||'NGN').toUpperCase();
-  const bankCode=clean(b.bankCode,20),accountNumber=clean(b.accountNumber,40),bankName=clean(b.bankName,120);
-  if(!Number.isFinite(amount)||amount<=0)return {error:'Enter a valid withdrawal amount.',status:400};
-  if(currency==='USD'&&amount<50)return {error:'Seller payouts are released in $50 USD thresholds.',status:400};
-  if(!['NGN','USD'].includes(currency))return {error:'Choose NGN or USD.',status:400};
-  if(!bankCode||!accountNumber||!bankName)return {error:'Bank name, bank code and account number are required.',status:400};
-  const balanceField=currency==='NGN'?'balanceNGN':'balanceUSD';
-  const available=Number(p[balanceField]||0);
+  const currency=String(b.currency||'').toUpperCase();
+  if(!['USD','NGN'].includes(currency))return {error:'Choose USD or NGN.',status:400};
+  const balanceField=currency==='NGN'?'balanceNGN':'balanceUSD',available=Number(p[balanceField]||0),threshold=currency==='NGN'?60000:50;
+  if(available<threshold)return {error:`Your ${currency} balance must reach ${currency==='USD'?'$50':'₦60,000'} before withdrawal.`,status:400};
+  const bank=p[currency==='USD'?'payoutBankUSD':'payoutBankNGN'];
+  if(!bank?.bankCode||!bank?.accountNumber||!bank?.accountName)return {error:`Save a valid ${currency} payout account first.`,status:400};
   if(p.banned)return {error:'Your seller account is permanently banned. Withdrawals are locked while the ban is active. Use the appeal button in Studio.',status:403};
-  if(amount>available)return {error:`Withdrawal amount is higher than your available ${currency} balance.`,status:400};
-  const transferRef=`WYW${crypto.randomUUID().replaceAll('-','').slice(0,28)}`;
+  const amount=available,transferRef=`WYW${crypto.randomUUID().replaceAll('-','').slice(0,28)}`;
   await db.runTransaction(async tx=>{
     const snap=await tx.get(ref),cur=snap.data()||{},bal=Number(cur[balanceField]||0);
-    if(cur.banned)throw Object.assign(new Error('Your seller account is permanently banned. Withdrawals are locked while the ban is active. Use the appeal button in Studio.'),{status:403});
-    if(amount>bal)throw Object.assign(new Error('Insufficient balance.'),{status:409});
-    tx.update(ref,{[balanceField]:bal-amount,[currency==='NGN'?'withdrawnNGN':'withdrawnUSD']:admin.firestore.FieldValue.increment(amount),updatedAt:admin.firestore.FieldValue.serverTimestamp()});
-    tx.create(db.collection('payouts').doc(transferRef),{uid:decoded.uid,amount,currency,bankCode,bankName,accountNumberMasked:`****${accountNumber.slice(-4)}`,status:'pending',reference:transferRef,createdAt:admin.firestore.FieldValue.serverTimestamp()});
+    if(cur.banned)throw Object.assign(new Error('Your seller account is permanently banned. Withdrawals are locked while the ban is active.'),{status:403});
+    if(bal<threshold)throw Object.assign(new Error(`Your ${currency} balance is below the withdrawal threshold.`),{status:409});
+    tx.update(ref,{[balanceField]:0,[currency==='NGN'?'withdrawnNGN':'withdrawnUSD']:admin.firestore.FieldValue.increment(bal),updatedAt:admin.firestore.FieldValue.serverTimestamp()});
+    tx.create(db.collection('payouts').doc(transferRef),{uid:decoded.uid,amount:bal,currency,bankCode:bank.bankCode,bankName:bank.bankName,accountNumberMasked:`****${String(bank.accountNumber).slice(-4)}`,accountName:bank.accountName,status:'pending',reference:transferRef,createdAt:admin.firestore.FieldValue.serverTimestamp()});
   });
   try{
-    const r=await flwRequest('/direct-transfers',{
-      method:'POST',
-      headers:{'X-Idempotency-Key':transferRef,'X-Trace-Id':crypto.randomUUID()},
-      body:JSON.stringify({
-        action:'instant',type:'bank',reference:transferRef,narration:'WyCode seller payout',
-        payment_instruction:{
-          amount:{value:amount,applies_to:'destination_currency'},
-          source_currency:currency,destination_currency:currency,
-          recipient:{bank_code:bankCode,account_number:accountNumber,account_name:clean(b.accountName,120)||'WyCode Seller'}
-        }
-      })
-    });
+    const r=await flwRequest('/direct-transfers',{method:'POST',headers:{'X-Idempotency-Key':transferRef,'X-Trace-Id':crypto.randomUUID()},body:JSON.stringify({action:'instant',type:'bank',reference:transferRef,narration:`WyCode ${currency} seller payout`,payment_instruction:{amount:{value:amount,applies_to:'destination_currency'},source_currency:currency,destination_currency:currency,recipient:{bank:{code:String(bank.bankCode),account_number:String(bank.accountNumber)},currency,name:{first:String(bank.accountName).split(' ')[0]||'Seller',last:String(bank.accountName).split(' ').slice(1).join(' ')||''}}}})});
     await db.collection('payouts').doc(transferRef).set({status:r.data?.status||'submitted',providerId:r.data?.id||'',provider:r.data||{},updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});
     return {ok:true,status:r.data?.status||'submitted',reference:transferRef};
   }catch(e){
-    await db.runTransaction(async tx=>{const s=await tx.get(ref);if(s.exists)tx.update(ref,{[balanceField]:admin.firestore.FieldValue.increment(amount)});});
+    await db.runTransaction(async tx=>{const s=await tx.get(ref);if(s.exists)tx.update(ref,{[balanceField]:admin.firestore.FieldValue.increment(amount),[currency==='NGN'?'withdrawnNGN':'withdrawnUSD']:admin.firestore.FieldValue.increment(-amount),updatedAt:admin.firestore.FieldValue.serverTimestamp()});});
     await db.collection('payouts').doc(transferRef).set({status:'failed',error:e.message||'Transfer failed',updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});
     throw e;
   }
@@ -276,14 +276,15 @@ export default async function handler(req,res){
         const payouts=(await db.collection('payouts').where('uid','==',decoded.uid).limit(50).get()).docs.map(d=>d.data());
         const appealSnap=await db.collection('sellerAppeals').where('uid','==',decoded.uid).limit(1).get();
         const appeal=appealSnap.empty?null:toJSON({id:appealSnap.docs[0].id,...appealSnap.docs[0].data()});
-        return json(res,200,{profile:toJSON({...p,uid:decoded.uid}),plan,products:products.map(toJSON),sales:sales.map(toJSON),payouts:payouts.map(toJSON),appeal});
+        const banks=await getBanks().catch(()=>[]);
+        return json(res,200,{profile:toJSON({...p,uid:decoded.uid}),plan,products:products.map(toJSON),sales:sales.map(toJSON),payouts:payouts.map(toJSON),appeal,banks});
       }
       if(action==='profile')return json(res,200,{profile:toJSON({...p,uid:decoded.uid}),plan});
       return json(res,400,{error:'Unknown dashboard action.'});
     }
     const b=await body(req),action=clean(b.action,40);
     if(action==='save-profile'){
-      const patch={displayName:clean(b.displayName,80),bio:clean(b.bio,600),website:clean(b.website,500),publicEmail:clean(b.publicEmail,320),whatsapp:clean(b.whatsapp,40),reviewsDriveId:clean(b.reviewsDriveId,200),updatedAt:admin.firestore.FieldValue.serverTimestamp()};
+      const patch={displayName:clean(b.displayName,80),bio:clean(b.bio,600),website:clean(b.website,500),publicEmail:clean(b.publicEmail,320),whatsapp:clean(b.whatsapp,40),updatedAt:admin.firestore.FieldValue.serverTimestamp()};
       await ref.set(patch,{merge:true});return json(res,200,{ok:true,profile:toJSON({...p,...patch,uid:decoded.uid})});
     }
     if(action==='publish'){const r=await publish(db,ref,p,b,decoded);if(r.error)return json(res,r.status,{error:r.error});return json(res,200,r);}
@@ -314,7 +315,7 @@ export default async function handler(req,res){
       await orderRef.set({status:'paid',paidAt:admin.firestore.FieldValue.serverTimestamp(),verifiedAmount:Number(charge.amount),verifiedCurrency:charge.currency,updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});
       return json(res,200,{status:'paid',tier:o.tier,accessUntil:until.toISOString()});
     }
-    if(action==='save-bank'){const bankName=clean(b.bankName,120),bankCode=clean(b.bankCode,20),accountNumber=clean(b.accountNumber,40),accountName=clean(b.accountName,120);if(!bankName||!bankCode||!accountNumber||!accountName)return json(res,400,{error:'Complete bank details first.'});await ref.set({payoutBank:{bankName,bankCode,accountNumber,accountName},updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});const payout=await releaseThresholdPayouts(decoded.uid).catch(e=>({status:'failed',error:e.message}));return json(res,200,{ok:true,payout});}
+    if(action==='save-bank'){const currency=String(b.currency||'').toUpperCase();if(!['USD','NGN'].includes(currency))return json(res,400,{error:'Choose USD or NGN payout currency.'});const account=await resolveBank(b.bankName,b.accountNumber,currency);if(!account.accountName)return json(res,400,{error:'Flutterwave could not verify the account name. Check the bank and account number.'});const field=currency==='USD'?'payoutBankUSD':'payoutBankNGN';await ref.set({[field]:account,updatedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});return json(res,200,{ok:true,currency,account:{bankName:account.bankName,accountNumber:account.accountNumberMasked||`****${account.accountNumber.slice(-4)}`,accountName:account.accountName}});}
     return json(res,400,{error:'Unknown seller action.'});
   }catch(e){json(res,e.status&&e.status<500?e.status:500,{error:e.message||'Seller request failed.'});}
 }

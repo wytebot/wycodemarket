@@ -4,10 +4,15 @@ import {getDb,flwRequest,json,method,rawBody,markPaid} from './_lib.js';
 
 export const config = { api: { bodyParser: false } };
 
-function signatureValid(raw, sig, secret) {
-  if (!secret || !sig) return false;
-  const expected=crypto.createHmac('sha256',secret).update(raw).digest('base64');
-  const a=Buffer.from(String(sig)),b=Buffer.from(expected);
+function signatureValid(raw, headers) {
+  const configured=String(process.env.FLW_WEBHOOK_SECRET||'').trim();
+  if(!configured) return false;
+  const secretHash=String(headers['verif-hash']||headers['Verif-Hash']||'').trim();
+  if(secretHash) return crypto.timingSafeEqual(Buffer.from(secretHash),Buffer.from(configured)) && secretHash.length===configured.length;
+  const hmac=String(headers['flutterwave-signature']||headers['Flutterwave-Signature']||'').trim();
+  if(!hmac) return false;
+  const expected=crypto.createHmac('sha256',configured).update(raw).digest('base64');
+  const a=Buffer.from(hmac),b=Buffer.from(expected);
   return a.length===b.length && crypto.timingSafeEqual(a,b);
 }
 function successful(status){return ['succeeded','successful'].includes(String(status||'').toLowerCase());}
@@ -46,17 +51,48 @@ export default async function handler(req,res){
   if(!method(req,res,['POST']))return;
   try{
     const raw=await rawBody(req);
-    const sig=String(req.headers['flutterwave-signature']||'');
-    if(!signatureValid(raw,sig,process.env.FLW_WEBHOOK_SECRET))return json(res,401,{error:'Invalid webhook signature'});
     let p;try{p=JSON.parse(raw.toString('utf8'));}catch{return json(res,400,{error:'Invalid webhook JSON'});}
-    const db=getDb(),eventId=String(p.id||'');
+    const source=String(p.source||'').toLowerCase();
+    const wytelabSecret=String(process.env.WYCOD_MARKET_WEBHOOK_SECRET||'').trim();
+    let trustedWytelab=false;
+    if(source==='wytelab'){
+      const sig=String(req.headers['x-wytelab-signature']||'').trim();
+      if(!wytelabSecret||!sig)return json(res,401,{error:'Missing Wytelab webhook signature'});
+      const expected=crypto.createHmac('sha256',wytelabSecret).update(raw).digest('base64');
+      const a=Buffer.from(sig),b=Buffer.from(expected);
+      trustedWytelab=a.length===b.length&&crypto.timingSafeEqual(a,b);
+      if(!trustedWytelab)return json(res,401,{error:'Invalid Wytelab webhook signature'});
+    }else if(!signatureValid(raw,req.headers))return json(res,401,{error:'Invalid Flutterwave webhook signature'});
+    const db=getDb(),eventId=String(p.id||req.headers['x-wytelab-event-id']||''),eventKey=`${source==='wytelab'?'wytelab':'flutterwave'}:${eventId}`;
     if(eventId){
-      const eventRef=db.collection('flutterwaveWebhookEvents').doc(eventId),eventSnap=await eventRef.get();
+      const eventRef=db.collection('flutterwaveWebhookEvents').doc(eventKey),eventSnap=await eventRef.get();
       if(eventSnap.exists&&eventSnap.data()?.processed)return json(res,200,{received:true,duplicate:true});
       await eventRef.set({type:String(p.type||''),status:String(p.data?.status||''),receivedAt:admin.firestore.FieldValue.serverTimestamp(),processed:false},{merge:true});
     }
-    const d=p.data||{},chargeId=String(d.id||'');
+    const d=p.data||{},chargeId=String(d.id||d.charge_id||'');
     const meta=d.meta||{};
+    if(trustedWytelab){
+      const orderId=String(d.order_id||meta.order_id||'').trim(), reference=String(d.reference||'').trim(), status=String(d.status||'').toLowerCase();
+      if(!orderId||!reference||status!=='succeeded'||!Number.isFinite(Number(d.amount))||Number(d.amount)<=0||!String(d.currency||'').trim())return json(res,400,{error:'Invalid verified Wytelab payment event'});
+      let processed=false;
+      const orderRef=db.collection('orders').doc(orderId),os=await orderRef.get();
+      if(os.exists){
+        const o=os.data()||{};
+        if(String(o.reference)===reference&&Number(o.amount)===Number(d.amount)&&String(o.currency||'').toUpperCase()===String(d.currency).toUpperCase()){
+          await markPaid(orderId,{id:chargeId,reference,amount:Number(d.amount),currency:String(d.currency).toUpperCase(),status:'succeeded',flutterwaveReference:reference});
+          processed=true;
+        }
+      }
+      if(!processed){
+        const planRef=db.collection('sellerPlanOrders').doc(orderId),ps=await planRef.get();
+        if(ps.exists){
+          const o=ps.data()||{};
+          if(String(o.reference)===reference&&Number(o.amount)===Number(d.amount)&&String(o.currency||'USD').toUpperCase()===String(d.currency).toUpperCase())processed=await processSellerPlan(db,planRef,o,{id:chargeId,reference,amount:Number(d.amount),currency:String(d.currency).toUpperCase(),status:'succeeded'});
+        }
+      }
+      if(eventId)await db.collection('flutterwaveWebhookEvents').doc(eventKey).set({processed,source:'wytelab',processedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});
+      return json(res,200,{received:true,processed,source:'wytelab'});
+    }
     const orderId=String(meta.order_id||meta.orderId||'');
     let processed=false;
     if(orderId){
@@ -80,7 +116,7 @@ export default async function handler(req,res){
         processed=await processSellerPlan(db,orderRef,order,charge);
       }
     }
-    if(eventId)await db.collection('flutterwaveWebhookEvents').doc(eventId).set({processed:true,processedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});
+    if(eventId)await db.collection('flutterwaveWebhookEvents').doc(eventKey).set({processed:true,processedAt:admin.firestore.FieldValue.serverTimestamp()},{merge:true});
     return json(res,200,{received:true,processed});
   }catch(e){return json(res,500,{error:'Webhook processing failed'});}
 }
